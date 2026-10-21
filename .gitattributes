@@ -1,0 +1,2 @@
+# Los parches de patch-package deben conservar LF o no aplican en Windows
+patches/*.patch text eol=lf
