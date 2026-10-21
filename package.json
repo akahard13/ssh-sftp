@@ -1,0 +1,58 @@
+{
+  "name": "ssh-sftp-manager",
+  "version": "0.1.0",
+  "description": "Gestor de multiples sesiones SSH con comparador y despliegue selectivo por SFTP",
+  "main": "./out/main/index.js",
+  "author": "",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test:diff": "esbuild tools/difftest.ts --bundle --platform=node --format=cjs --outfile=tools/difftest.cjs --log-level=warning && node tools/difftest.cjs",
+    "package": "electron-vite build && electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.company.ssh-sftp-manager",
+    "productName": "SSH SFTP Manager",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ssh2": "^1.15.6",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^6.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "ssh2": "^1.17.0"
+  }
+}
