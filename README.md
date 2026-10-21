@@ -75,10 +75,23 @@ entonces la app muestra "Actualizaciones no configuradas" y no intenta descargar
 
 ```powershell
 # 1. Sube la versión en package.json ("version": "0.1.1")
-# 2. Compila y publica
+# 2. Crea y sube el tag ANTES de publicar (ver nota abajo)
+git tag v0.1.1
+git push origin v0.1.1
+# 3. Compila y publica
 $env:GH_TOKEN = "github_pat_..."
 npm run release
 ```
+
+> **El tag debe existir antes.** GitHub rechaza crear un release *publicado* cuyo tag todavía no
+> existe, y devuelve un error con código `custom` que electron-builder no reconoce como recuperable
+> (solo sabe tratar `already_exists`). Resultado: el build se corta y el release queda creado a medias.
+> Creando el tag primero el problema desaparece.
+>
+> Si un release queda incompleto, **vuelve a ejecutar `npm run release`**: al detectar el release
+> existente (publicado hace menos de 2 horas) vuelve a subir los archivos y sobreescribe los que ya
+> estaban. Verifica siempre que el release tenga **3 assets**: el `.exe`, el `.blockmap` y `latest.yml`.
+> Sin `latest.yml` la app no puede actualizarse.
 
 Esto sube el `.exe` del instalador, el `latest.yml` y el `.blockmap` al release de GitHub. El
 `.blockmap` es lo que permite descargas diferenciales: solo se bajan los bloques que cambiaron.
