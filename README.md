@@ -83,6 +83,11 @@ npm run release
 Esto sube el `.exe` del instalador, el `latest.yml` y el `.blockmap` al release de GitHub. El
 `.blockmap` es lo que permite descargas diferenciales: solo se bajan los bloques que cambiaron.
 
+> El nombre del archivo local ya está fijado como `SSH-SFTP-Manager-<versión>-setup.exe`, que es
+> exactamente el que espera `latest.yml`. Si publicas el release **a mano** en vez de con
+> `npm run release`, sube el archivo sin renombrarlo: cualquier cambio de nombre hace que la app reciba
+> un 404 al buscar la actualización.
+
 ### Cómo se comporta la app
 
 - Verifica al arrancar (15 s después) y luego cada 6 horas; también hay un botón manual "Buscar

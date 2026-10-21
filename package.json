@@ -45,7 +45,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "SSH SFTP Manager",
-      "artifactName": "${productName}-${version}-setup.${ext}"
+      "artifactName": "SSH-SFTP-Manager-${version}-setup.${ext}"
     }
   },
   "devDependencies": {
