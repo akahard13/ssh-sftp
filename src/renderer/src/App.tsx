@@ -26,6 +26,8 @@ export default function App(): JSX.Element {
   const [challenge, setChallenge] = useState<AuthChallenge | null>(null)
   const [answer, setAnswer] = useState('')
   const [banner, setBanner] = useState<string | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [topbarOpen, setTopbarOpen] = useState(true)
 
   const refresh = useCallback(async () => {
     try {
@@ -106,18 +108,20 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
-      <ServerSidebar
-        servers={servers}
-        statuses={statuses}
-        activeId={activeId}
-        onSelect={setActiveId}
-        onAdd={openNew}
-        onEdit={openEdit}
-        onDelete={(profile) => void remove(profile)}
-        onConnect={(id) => void connect(id)}
-        onDisconnect={(id) => void disconnect(id)}
-        footer={<UpdatePanel />}
-      />
+      {sidebarOpen ? (
+        <ServerSidebar
+          servers={servers}
+          statuses={statuses}
+          activeId={activeId}
+          onSelect={setActiveId}
+          onAdd={openNew}
+          onEdit={openEdit}
+          onDelete={(profile) => void remove(profile)}
+          onConnect={(id) => void connect(id)}
+          onDisconnect={(id) => void disconnect(id)}
+          footer={<UpdatePanel />}
+        />
+      ) : null}
 
       <main className="content">
         {banner ? (
@@ -136,24 +140,38 @@ export default function App(): JSX.Element {
           </div>
         ) : (
           <>
-            <header className="topbar">
-              <div className="topbar-title">
-                <strong>{active.name}</strong>
-                <span className="muted">
-                  {active.username}@{active.host}:{active.port}
-                </span>
-                <span className={`badge ${activeStatus?.state ?? 'disconnected'}`}>
-                  {activeStatus?.state === 'ready'
-                    ? 'conectado'
-                    : activeStatus?.state === 'connecting'
-                      ? 'conectando…'
-                      : activeStatus?.state === 'needs-auth'
-                        ? 'esperando código'
-                        : activeStatus?.state === 'error'
-                          ? 'error'
-                          : 'desconectado'}
-                </span>
-              </div>
+            <header className={`topbar ${topbarOpen ? '' : 'compact'}`}>
+              <button
+                type="button"
+                className="ghost small icon"
+                onClick={() => setSidebarOpen((open) => !open)}
+                title={sidebarOpen ? 'Ocultar la barra lateral' : 'Mostrar la barra lateral'}
+              >
+                {sidebarOpen ? '«' : '»'}
+              </button>
+
+              {topbarOpen ? (
+                <div className="topbar-title">
+                  <strong>{active.name}</strong>
+                  <span className="muted">
+                    {active.username}@{active.host}:{active.port}
+                  </span>
+                  <span className={`badge ${activeStatus?.state ?? 'disconnected'}`}>
+                    {activeStatus?.state === 'ready'
+                      ? 'conectado'
+                      : activeStatus?.state === 'connecting'
+                        ? 'conectando…'
+                        : activeStatus?.state === 'needs-auth'
+                          ? 'esperando código'
+                          : activeStatus?.state === 'error'
+                            ? 'error'
+                            : 'desconectado'}
+                  </span>
+                </div>
+              ) : (
+                <span className="topbar-min">{active.name}</span>
+              )}
+
               <div className="tabs">
                 <button
                   type="button"
@@ -170,11 +188,21 @@ export default function App(): JSX.Element {
                   Comparar / Subir
                 </button>
               </div>
-              {ready ? null : (
+
+              {topbarOpen && !ready ? (
                 <button type="button" className="primary small" onClick={() => void connect(active.id)}>
                   Conectar
                 </button>
-              )}
+              ) : null}
+
+              <button
+                type="button"
+                className="ghost small icon"
+                onClick={() => setTopbarOpen((open) => !open)}
+                title={topbarOpen ? 'Ocultar la barra superior' : 'Mostrar la barra superior'}
+              >
+                {topbarOpen ? '▲' : '▼'}
+              </button>
             </header>
 
             <section className="workspace">

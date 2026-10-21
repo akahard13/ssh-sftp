@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 import type { FilePair } from '../../../shared/types'
 import { buildDiff, buildResult, newFileDiff, splitLines } from '../lib/merge'
@@ -149,36 +149,36 @@ export default function DiffView({ serverId, pair, onUploaded }: DiffViewProps):
 
       <div className={`diff-body ${showResult ? 'with-result' : ''}`}>
         <div className="diff-scroll">
-          <div className="diff-columns">
-            <span className="diff-col-label">
+          <div className="diff-grid">
+            <span className="diff-col-label" style={{ gridColumn: '1 / 4' }}>
               Servidor {isNewFile ? '(no existe)' : '(remoto)'}
             </span>
-            <span className="diff-col-label">Local</span>
-          </div>
-          <div className="diff-grid">
+            <span className="diff-col-label" style={{ gridColumn: '4 / 6' }}>
+              Local
+            </span>
             {rows.map(({ row, isFirstOfHunk }) => {
               if (row.kind === 'collapse') {
                 return (
-                  <div className="diff-collapse" key={row.key}>
+                  <span className="diff-collapse" key={row.key}>
                     ⋯ {row.count} línea(s) sin cambios ⋯
-                  </div>
+                  </span>
                 )
               }
               if (row.kind === 'equal') {
                 return (
-                  <div className="diff-row equal" key={row.key}>
+                  <Fragment key={row.key}>
                     <span className="diff-gutter" />
                     <span className="diff-no">{row.aNo}</span>
                     <span className="diff-code">{row.text}</span>
                     <span className="diff-no">{row.bNo}</span>
                     <span className="diff-code">{row.text}</span>
-                  </div>
+                  </Fragment>
                 )
               }
               const applied = selected.has(row.hunkId)
               return (
-                <div className={`diff-row change ${applied ? 'applied' : ''}`} key={row.key}>
-                  <span className="diff-gutter">
+                <Fragment key={row.key}>
+                  <span className={`diff-gutter ${applied ? 'applied' : ''}`}>
                     {isFirstOfHunk ? (
                       <input
                         type="checkbox"
@@ -192,7 +192,7 @@ export default function DiffView({ serverId, pair, onUploaded }: DiffViewProps):
                   <span className={`diff-code ${row.del ? 'del' : 'blank'}`}>{row.del?.text ?? ''}</span>
                   <span className={`diff-no ${row.add ? 'add' : ''}`}>{row.add?.no ?? ''}</span>
                   <span className={`diff-code ${row.add ? 'add' : 'blank'}`}>{row.add?.text ?? ''}</span>
-                </div>
+                </Fragment>
               )
             })}
           </div>
