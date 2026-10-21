@@ -1,6 +1,7 @@
 import type {
   AuthChallenge,
   AuditEvent,
+  CompareDefaults,
   CompareProgress,
   CompareResult,
   ConnectionStatus,
@@ -61,11 +62,14 @@ export interface AppApi {
     listDirectories(serverId: string, path: string): Promise<RemoteDir[]>
   }
   compare: {
+    defaults(): Promise<CompareDefaults>
+    saveExcludes(patterns: string[]): Promise<boolean>
     run(
       requestId: string,
       serverId: string,
       remoteRoot: string,
-      localRoot: string
+      localRoot: string,
+      excluded: string[]
     ): Promise<CompareResult | null>
     cancel(requestId: string): Promise<boolean>
     onProgress(handler: (progress: CompareProgress) => void): Unsubscribe

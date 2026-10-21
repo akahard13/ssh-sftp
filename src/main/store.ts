@@ -27,6 +27,12 @@ interface KnownHostsFile {
   hosts: Record<string, KnownHost>
 }
 
+interface SettingsFile {
+  version: 1
+  /** Carpetas excluidas en la comparación; null = usar las predeterminadas. */
+  excludedDirs: string[] | null
+}
+
 const AUDIT_LIMIT = 2000
 
 function dataDir(): string {
@@ -56,6 +62,7 @@ async function writeJsonAtomic(file: string, value: unknown): Promise<void> {
 let profiles: ProfilesFile = { version: 1, servers: [] }
 let secrets: SecretFile = { version: 1, secrets: {} }
 let knownHosts: KnownHostsFile = { version: 1, hosts: {} }
+let settings: SettingsFile = { version: 1, excludedDirs: null }
 let audit: AuditEvent[] = []
 
 export async function initStore(): Promise<void> {
@@ -71,6 +78,14 @@ export async function initStore(): Promise<void> {
   }
   audit = await readJson<AuditEvent[]>(pathFor('audit.json'), [])
   if (!Array.isArray(audit)) audit = []
+  const storedSettings = await readJson<SettingsFile>(pathFor('settings.json'), {
+    version: 1,
+    excludedDirs: null
+  })
+  settings = {
+    version: 1,
+    excludedDirs: Array.isArray(storedSettings.excludedDirs) ? storedSettings.excludedDirs : null
+  }
 }
 
 export function listServers(): ServerProfile[] {
@@ -171,4 +186,13 @@ export async function appendAudit(event: AuditEvent): Promise<void> {
 
 export function listAudit(): AuditEvent[] {
   return audit.slice(-200).reverse()
+}
+
+export function getExcludedDirsSetting(): string[] | null {
+  return settings.excludedDirs ? [...settings.excludedDirs] : null
+}
+
+export async function saveExcludedDirsSetting(dirs: string[]): Promise<void> {
+  settings = { version: 1, excludedDirs: [...dirs] }
+  await writeJsonAtomic(pathFor('settings.json'), settings)
 }

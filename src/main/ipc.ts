@@ -5,10 +5,12 @@ import type { ServerInput, ServerProfile } from '../shared/types'
 import {
   appendAudit,
   deleteServer,
+  getExcludedDirsSetting,
   getServer,
   initStore,
   listAudit,
   listServers,
+  saveExcludedDirsSetting,
   saveServer,
   trustHostKey
 } from './store'
@@ -24,7 +26,7 @@ import {
   setManagerEvents,
   writeShell
 } from './ssh/manager'
-import { assertInsideRoot, atomicUpload, LIMITS, listRemoteDirectories, remoteReadFile, remoteStat } from './ssh/sftp'
+import { assertInsideRoot, atomicUpload, DEFAULT_EXCLUDES, LIMITS, listRemoteDirectories, remoteReadFile, remoteStat } from './ssh/sftp'
 import { compareDirectories, hashBuffer, MISSING_REMOTE_HASH, readPair } from './ssh/compare'
 import {
   asAbsoluteRemotePath,
@@ -78,6 +80,30 @@ function requireProfile(serverId: unknown): ServerProfile {
   const profile = getServer(id)
   if (!profile) throw new ValidationError('Servidor desconocido.')
   return profile
+}
+
+/** Patrones de exclusión: nombres de carpeta o archivo, y `*`/`?` como comodines. */
+function parseExcludePatterns(value: unknown, fallback: readonly string[] | null): string[] {
+  if (value === undefined || value === null) {
+    if (!fallback) throw new ValidationError('La lista de exclusiones es obligatoria.')
+    return [...fallback]
+  }
+  if (!Array.isArray(value)) throw new ValidationError('Las exclusiones deben ser una lista.')
+  if (value.length > 100) throw new ValidationError('Demasiados patrones de exclusión.')
+
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const raw of value) {
+    const pattern = asString(raw, 'exclude', { max: 100, allowEmpty: true })
+    if (pattern.length === 0) continue
+    if (pattern.includes('\\') || pattern.includes('..') || pattern.startsWith('/')) {
+      throw new ValidationError(`Patrón de exclusión no permitido: ${pattern}`)
+    }
+    if (seen.has(pattern)) continue
+    seen.add(pattern)
+    out.push(pattern)
+  }
+  return out
 }
 
 function assertRemoteAllowed(profile: ServerProfile, remotePath: string): void {
@@ -210,13 +236,31 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     return listRemoteDirectories(sftp, target)
   })
 
+  ipcMain.handle('compare:defaults', () => ({
+    defaults: [...DEFAULT_EXCLUDES],
+    saved: getExcludedDirsSetting()
+  }))
+
+  ipcMain.handle('compare:save-excludes', async (_e, patterns: unknown) => {
+    await saveExcludedDirsSetting(parseExcludePatterns(patterns, null))
+    return true
+  })
+
   ipcMain.handle(
     'compare:run',
-    async (_e, requestId: unknown, serverId: unknown, remoteRoot: unknown, localRoot: unknown) => {
+    async (
+      _e,
+      requestId: unknown,
+      serverId: unknown,
+      remoteRoot: unknown,
+      localRoot: unknown,
+      excluded: unknown
+    ) => {
       const request = asString(requestId, 'requestId', { max: 64 })
       const profile = requireProfile(serverId)
       const remote = asAbsoluteRemotePath(remoteRoot, 'remoteRoot')
       const local = asString(localRoot, 'localRoot', { max: 2048 })
+      const excludePatterns = parseExcludePatterns(excluded, DEFAULT_EXCLUDES)
       assertRemoteAllowed(profile, remote)
       const localInfo = await stat(local).catch(() => null)
       if (!localInfo?.isDirectory()) throw new ValidationError('El directorio local no existe.')
@@ -243,7 +287,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
       }
 
       try {
-        return await compareDirectories(sftp, remote, local, {
+        return await compareDirectories(sftp, remote, local, excludePatterns, {
           shouldCancel: () => cancelledCompares.has(request),
           onProgress: report
         })

@@ -98,9 +98,15 @@ export interface CompareResult {
   entries: CompareEntry[]
   scanned: number
   truncated: boolean
-  /** Directorios omitidos por la lista de exclusión (node_modules, vendor, .git…). */
+  /** Elementos omitidos por los patrones de exclusión (carpetas y archivos). */
   excludedDirs: number
+  excludedFiles: number
   dirsScanned: number
+}
+
+export interface CompareDefaults {
+  defaults: string[]
+  saved: string[] | null
 }
 
 export interface CompareProgress {

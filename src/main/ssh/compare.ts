@@ -5,7 +5,7 @@ import { join, posix } from 'node:path'
 import type { SFTPWrapper } from 'ssh2'
 import type { CompareEntry, CompareResult, CompareStatus, FilePair } from '../../shared/types'
 import {
-  DEFAULT_EXCLUDED_DIRS,
+  buildExcludeRules,
   LIMITS,
   remoteReadFile,
   remoteStat,
@@ -74,13 +74,14 @@ export async function compareDirectories(
   sftp: SFTPWrapper,
   remoteRoot: string,
   localRoot: string,
+  excludePatterns: readonly string[],
   hooks: CompareWalkHooks
 ): Promise<CompareResult | null> {
-  const excluded = DEFAULT_EXCLUDED_DIRS
+  const excludeRules = buildExcludeRules(excludePatterns)
 
   const remote = await walkRemote(remoteRoot, sftp, {
     join: posix.join,
-    excluded,
+    excludeRules,
     shouldCancel: hooks.shouldCancel,
     onProgress: (delta) =>
       hooks.onProgress('walking-remote', { dirs: delta.dirs ?? 0, entries: delta.entries ?? 0 })
@@ -89,7 +90,7 @@ export async function compareDirectories(
 
   const local = await walkTree(localRoot, listLocalDir, {
     join,
-    excluded,
+    excludeRules,
     shouldCancel: hooks.shouldCancel,
     onProgress: (delta) =>
       hooks.onProgress('walking-local', { dirs: delta.dirs ?? 0, entries: delta.entries ?? 0 })
@@ -142,6 +143,7 @@ export async function compareDirectories(
     scanned: remote.entries.length + local.entries.length,
     truncated: remote.truncated || local.truncated,
     excludedDirs: remote.excludedDirs + local.excludedDirs,
+    excludedFiles: remote.excludedFiles + local.excludedFiles,
     dirsScanned: remote.dirsScanned + local.dirsScanned
   }
 }

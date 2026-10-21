@@ -1,4 +1,4 @@
-import { DEFAULT_EXCLUDED_DIRS, LIMITS, walkTree } from '../src/main/ssh/sftp'
+import { DEFAULT_EXCLUDES, LIMITS, buildExcludeRules, walkTree } from '../src/main/ssh/sftp'
 import type { WalkedItem } from '../src/main/ssh/sftp'
 
 let failures = 0
@@ -52,7 +52,7 @@ function run(
     },
     {
       join: (parent, name) => (parent === '/' ? `/${name}` : `${parent}/${name}`),
-      excluded: DEFAULT_EXCLUDED_DIRS,
+      excludeRules: buildExcludeRules(DEFAULT_EXCLUDES),
       shouldCancel: () => false,
       onProgress: (delta) => {
         progress.dirs += delta.dirs ?? 0
@@ -138,7 +138,7 @@ async function main(): Promise<void> {
     },
     {
       join: (parent, name) => `/${name}`,
-      excluded: DEFAULT_EXCLUDED_DIRS,
+      excludeRules: buildExcludeRules(DEFAULT_EXCLUDES),
       shouldCancel: () => false,
       onProgress: () => {}
     }
@@ -152,6 +152,32 @@ async function main(): Promise<void> {
   // 5. Error de lectura: no rompe el recorrido, solo salta esa carpeta.
   const broken = await run({ '/': [dir('ok'), dir('roto')], '/ok': [file('a.txt')] })
   assert(broken.output.entries.length === 1, 'una carpeta ilegible no rompe el recorrido')
+
+  // 6. Patrones sobre archivos y sobre rutas, no solo carpetas.
+  const fileTree: Record<string, WalkedItem[]> = {
+    '/': [file('depurar.log'), file('keep.php'), dir('config'), dir('logs')],
+    '/config': [file('local.php'), file('app.php')],
+    '/logs': [file('viejo.log')]
+  }
+  const files = await run(fileTree, {
+    excludeRules: buildExcludeRules(['*.log', 'config/local.php'])
+  })
+  assert(files.output.excludedFiles === 3, 'excluye archivos por patron', files.output.excludedFiles)
+  assert(
+    files.output.entries.map((e) => e.relPath).sort().join('|') === 'config/app.php|keep.php',
+    'queda solo lo no excluido',
+    files.output.entries.map((e) => e.relPath)
+  )
+
+  // 7. El nombre excluido aplica en cualquier nivel.
+  const nested: Record<string, WalkedItem[]> = {
+    '/': [dir('src')],
+    '/src': [dir('node_modules'), file('app.ts')],
+    '/src/node_modules': [file('lib.js')]
+  }
+  const nestedOut = await run(nested)
+  assert(nestedOut.output.excludedDirs === 1, 'excluye node_modules anidado', nestedOut.output)
+  assert(nestedOut.output.entries.length === 1, 'no entra al node_modules anidado')
 
   if (failures === 0) console.log('OK: todas las pruebas de recorrido pasaron')
   else {

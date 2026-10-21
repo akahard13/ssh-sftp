@@ -28,8 +28,8 @@ export const LIMITS = {
   maxDiffBytes: 4 * 1024 * 1024
 } as const
 
-/** Carpetas que no tiene sentido comparar en un despliegue (pesadas o generadas). */
-export const DEFAULT_EXCLUDED_DIRS: ReadonlySet<string> = new Set([
+/** Nombres y patrones que no tiene sentido comparar en un despliegue (pesados o generados). */
+export const DEFAULT_EXCLUDES: readonly string[] = [
   'node_modules',
   'vendor',
   'bower_components',
@@ -46,8 +46,42 @@ export const DEFAULT_EXCLUDED_DIRS: ReadonlySet<string> = new Set([
   '__pycache__',
   '.venv',
   'venv',
-  '.cache'
-])
+  '.cache',
+  '.DS_Store',
+  'Thumbs.db'
+]
+
+export interface ExcludeRule {
+  /** El patrón lleva `/`, así que se compara contra la ruta relativa y no contra el nombre. */
+  hasSlash: boolean
+  regex: RegExp
+}
+
+/**
+ * Compila los patrones de exclusión. Aceptan `*` y `?`.
+ * Un patrón sin `/` compara contra el nombre del elemento (carpeta o archivo);
+ * con `/` compara contra la ruta relativa completa.
+ */
+export function buildExcludeRules(patterns: readonly string[]): ExcludeRule[] {
+  const rules: ExcludeRule[] = []
+  for (const raw of patterns) {
+    const pattern = raw.trim()
+    if (!pattern) continue
+    const escaped = pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.')
+    rules.push({ hasSlash: pattern.includes('/'), regex: new RegExp(`^${escaped}$`) })
+  }
+  return rules
+}
+
+export function isExcluded(rules: readonly ExcludeRule[], name: string, relPath: string): boolean {
+  for (const rule of rules) {
+    if (rule.regex.test(rule.hasSlash ? relPath : name)) return true
+  }
+  return false
+}
 
 export interface WalkedItem {
   name: string
@@ -59,7 +93,7 @@ export interface WalkedItem {
 export interface WalkOptions {
   /** Une un directorio padre con el nombre del hijo usando el separador correcto. */
   join: (parent: string, name: string) => string
-  excluded: ReadonlySet<string>
+  excludeRules: readonly ExcludeRule[]
   shouldCancel: () => boolean
   onProgress: (delta: { dirs?: number; entries?: number }) => void
 }
@@ -68,6 +102,7 @@ export interface WalkOutput {
   entries: RemoteWalkEntry[]
   truncated: boolean
   excludedDirs: number
+  excludedFiles: number
   dirsScanned: number
 }
 
@@ -86,6 +121,7 @@ export async function walkTree(
   const queue: { abs: string; rel: string }[] = [{ abs: root, rel: '' }]
   let truncated = false
   let excludedDirs = 0
+  let excludedFiles = 0
   let dirsScanned = 0
   let inFlight = 0
 
@@ -126,11 +162,12 @@ export async function walkTree(
           return
         }
         const rel = current.rel ? `${current.rel}/${item.name}` : item.name
+        if (isExcluded(options.excludeRules, item.name, rel)) {
+          if (item.isDirectory) excludedDirs++
+          else excludedFiles++
+          continue
+        }
         if (item.isDirectory) {
-          if (options.excluded.has(item.name)) {
-            excludedDirs++
-            continue
-          }
           queue.push({ abs: options.join(current.abs, item.name), rel })
           continue
         }
@@ -141,7 +178,7 @@ export async function walkTree(
   }
 
   await Promise.all(Array.from({ length: WALK_CONCURRENCY }, () => worker()))
-  return { entries, truncated, excludedDirs, dirsScanned }
+  return { entries, truncated, excludedDirs, excludedFiles, dirsScanned }
 }
 
 async function listRemoteDir(abs: string, sftp: SFTPWrapper): Promise<WalkedItem[]> {

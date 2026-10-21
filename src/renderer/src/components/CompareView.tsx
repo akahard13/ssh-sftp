@@ -8,25 +8,12 @@ import type {
   ServerProfile
 } from '../../../shared/types'
 import DiffView from './DiffView'
+import FileTree from './FileTree'
 import RemotePathBrowser from './RemotePathBrowser'
+import { buildTree, collectDirPaths } from '../lib/tree'
 
 interface CompareViewProps {
   profile: ServerProfile
-}
-
-const STATUS_LABEL: Record<CompareEntry['status'], string> = {
-  'local-only': 'solo local',
-  'remote-only': 'solo servidor',
-  modified: 'distinto',
-  identical: 'igual',
-  'same-size': 'mismo tamaño'
-}
-
-function formatSize(bytes: number | null): string {
-  if (bytes === null) return '—'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
 function newRequestId(): string {
@@ -54,11 +41,20 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const [pairLoading, setPairLoading] = useState(false)
   const [browserOpen, setBrowserOpen] = useState(false)
   const [progress, setProgress] = useState<CompareProgress | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [excludeText, setExcludeText] = useState('')
+  const [excludeOpen, setExcludeOpen] = useState(false)
   const activeRequest = useRef<string | null>(null)
 
   useEffect(() => {
     return window.api.compare.onProgress((incoming) => {
       if (incoming.requestId === activeRequest.current) setProgress(incoming)
+    })
+  }, [])
+
+  useEffect(() => {
+    void window.api.compare.defaults().then(({ defaults, saved }) => {
+      setExcludeText((saved ?? defaults).join(', '))
     })
   }, [])
 
@@ -78,12 +74,39 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     return result.entries.filter((entry) => entry.status !== 'identical')
   }, [result, onlyChanges])
 
+  const tree = useMemo(() => buildTree(visibleEntries), [visibleEntries])
+
+  const toggleDir = (path: string): void => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  const excludeList = useMemo(
+    () =>
+      excludeText
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0),
+    [excludeText]
+  )
+
   const runCompareRequest = async (): Promise<CompareResult | null> => {
     const requestId = newRequestId()
     activeRequest.current = requestId
     setProgress(null)
+    void window.api.compare.saveExcludes(excludeList)
     try {
-      return await window.api.compare.run(requestId, profile.id, remotePath, localPath)
+      return await window.api.compare.run(
+        requestId,
+        profile.id,
+        remotePath,
+        localPath,
+        excludeList
+      )
     } finally {
       activeRequest.current = null
       setProgress(null)
@@ -107,6 +130,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
       setResult(compared)
       setPair(null)
       setActiveRel(null)
+      setExpanded(new Set())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo comparar.')
       setResult(null)
@@ -218,6 +242,19 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
           />
           Solo diferencias
         </label>
+        <button type="button" className="ghost small" onClick={() => setExcludeOpen((open) => !open)}>
+          {excludeOpen ? 'Ocultar exclusiones' : `Exclusiones (${excludeList.length})`}
+        </button>
+        {excludeOpen ? (
+          <label className="field field-wide">
+            <span>Ignorar carpetas y archivos (separados por coma; acepta * como comodín)</span>
+            <input
+              value={excludeText}
+              onChange={(e) => setExcludeText(e.target.value)}
+              placeholder="node_modules, vendor, *.log, .env"
+            />
+          </label>
+        ) : null}
       </div>
 
       {error ? <p className="error-banner">{error}</p> : null}
@@ -227,35 +264,47 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
         <div className="file-list">
           <div className="file-list-head">
             <span>{result ? `${visibleEntries.length} archivo(s)` : 'Sin comparar'}</span>
-            {result?.truncated ? <span className="warn">truncado</span> : null}
-          </div>
-          {result ? (
-            <p className="list-note">
-              {result.excludedDirs.toLocaleString('es')} carpetas excluidas ·{' '}
-              {result.dirsScanned.toLocaleString('es')} revisadas
-            </p>
-          ) : null}
-          <ul>
-            {visibleEntries.map((entry) => (
-              <li key={entry.relPath}>
+            {result ? (
+              <span className="tree-buttons">
                 <button
                   type="button"
-                  className={`file-row ${activeRel === entry.relPath ? 'active' : ''}`}
-                  onClick={() => void openFile(entry)}
-                  title={`${entry.relPath} · local ${formatSize(entry.localSize)} · servidor ${formatSize(entry.remoteSize)}`}
+                  className="ghost small"
+                  onClick={() => setExpanded(new Set(collectDirPaths(tree)))}
                 >
-                  <span className={`status-chip ${entry.status}`}>{STATUS_LABEL[entry.status]}</span>
-                  <span className="file-path">{entry.relPath}</span>
+                  Expandir
                 </button>
-              </li>
-            ))}
-            {result && visibleEntries.length === 0 ? (
-              <li className="empty-hint">No hay diferencias.</li>
+                <button type="button" className="ghost small" onClick={() => setExpanded(new Set())}>
+                  Cerrar
+                </button>
+              </span>
             ) : null}
-            {!result ? (
-              <li className="empty-hint">Elige las carpetas y pulsa Comparar.</li>
-            ) : null}
-          </ul>
+          </div>
+          {result?.truncated ? (
+            <p className="truncate-warning">
+              Se alcanzó el límite de archivos por lado: puede haber archivos que no aparecen en la
+              lista. Compara carpetas más pequeñas o excluye las pesadas.
+            </p>
+          ) : null}
+          {result ? (
+            <p className="list-note">
+              {result.excludedDirs.toLocaleString('es')} carpetas y{' '}
+              {result.excludedFiles.toLocaleString('es')} archivos ignorados ·{' '}
+              {result.dirsScanned.toLocaleString('es')} carpetas revisadas
+            </p>
+          ) : null}
+          {result && visibleEntries.length > 0 ? (
+            <FileTree
+              nodes={tree}
+              activePath={activeRel}
+              expanded={expanded}
+              onToggle={toggleDir}
+              onSelect={(entry) => void openFile(entry)}
+            />
+          ) : null}
+          {result && visibleEntries.length === 0 ? (
+            <p className="empty-hint">No hay diferencias.</p>
+          ) : null}
+          {!result ? <p className="empty-hint">Elige las carpetas y pulsa Comparar.</p> : null}
         </div>
 
         <div className="diff-area">

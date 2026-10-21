@@ -444,6 +444,11 @@ select:focus {
   min-width: 220px;
 }
 
+.field-wide {
+  flex: 1 1 100%;
+  min-width: 100%;
+}
+
 .field span {
   color: var(--muted);
   font-size: 11px;
@@ -568,33 +573,74 @@ select:focus {
   border-bottom: 1px solid var(--border);
 }
 
-.file-row {
+/* ---------- Árbol de archivos ---------- */
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+
+.tree-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   text-align: left;
   background: transparent;
-  border: 1px solid transparent;
+  border: none;
+  border-radius: 4px;
   color: var(--text);
-  padding: 5px 8px;
-  border-radius: 5px;
+  padding: 3px 8px 3px 0;
+  font-size: 12px;
 }
 
-.file-row:hover {
+.tree-row:hover {
   background: var(--panel-2);
 }
 
-.file-row.active {
+.tree-row.file.active {
   background: #172231;
-  border-color: #2f4a6d;
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.file-path {
+.tree-caret {
+  width: 12px;
+  flex: 0 0 12px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.tree-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+}
+
+.tree-row.dir .tree-name {
+  color: #a9b6c7;
+}
+
+.tree-count {
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: 10px;
+  flex: 0 0 auto;
+}
+
+.tree-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.truncate-warning {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #e3b341;
+  background: #33280f;
+  border-bottom: 1px solid var(--border);
 }
 
 .status-chip {

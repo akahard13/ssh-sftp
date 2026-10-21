@@ -43,8 +43,12 @@ node node_modules/electron/install.js
 2. **Conectar**: al primer contacto la app muestra la huella del host; hay que verificarla y confiar en
    ella antes de que se guarde en `known_hosts`.
 3. **Terminal**: pestaña `Terminal`, sesión completa sobre `xterm-256color` con redimensionado real.
-4. **Comparar / Subir**: elige el directorio local y el del servidor, pulsa `Comparar` y verás el árbol
-   con el estado de cada archivo (`solo local`, `solo servidor`, `distinto`, `igual`).
+4. **Comparar / Subir**: elige el directorio local y el del servidor, pulsa `Comparar` y verás un
+   **árbol plegable** con el estado de cada archivo (`solo local`, `solo servidor`, `distinto`, `igual`,
+   `mismo tamaño`). Cada carpeta muestra cuántas diferencias tiene debajo, así que sabes dónde mirar sin
+   desplegar todo; `Expandir` y `Cerrar` abren o pliegan el árbol completo.
+   Con el botón **Exclusiones** ajustas qué se ignora antes de comparar: acepta nombres de carpeta o de
+   archivo y comodines `*` (`node_modules`, `*.log`, `config/local.php`). Lo que escribas queda guardado.
 5. **Revisar un archivo**: se abre el diff a dos columnas (servidor ↔ local) con un bloque seleccionable
    por cada cambio, más un tercer panel con el **archivo generado**.
 6. **Subir**: `Subir seleccionados` escribe en el servidor solo los bloques marcados, de forma atómica y
@@ -176,8 +180,10 @@ tools/difftest.ts  pruebas del motor de diff
   calcular su hash, lo que hacía inviable un proyecto con miles de archivos.
 - **Recorrido en paralelo**: el listado de carpetas con concurrencia limitada (12 a la vez) en lugar de
   una petición por carpeta en serie, que dominaba el tiempo total.
-- **Exclusiones por defecto**: `node_modules`, `vendor`, `.git`, `storage`, `dist`, `build` y similares
-  se omiten en ambos lados, y el número de carpetas omitidas se muestra en la lista.
+- **Exclusiones configurables**: `node_modules`, `vendor`, `.git`, `storage`, `dist`, `build` y similares
+  se omiten por defecto en ambos lados. La lista es editable desde la interfaz y acepta **archivos además
+  de carpetas**, con `*` y `?` como comodines; un patrón sin `/` compara contra el nombre y con `/` contra
+  la ruta relativa. El número de carpetas y archivos ignorados se muestra en la lista.
 - **SFTP no notifica cambios**: el árbol se refresca al comparar o al subir; no hay vigilancia remota.
 
 ## Límites conocidos
@@ -190,7 +196,9 @@ tools/difftest.ts  pruebas del motor de diff
 - La comparación de directorios se hace por **tamaño y fecha**, no por contenido (para no descargar
   miles de archivos). Un archivo con el mismo tamaño y fecha distinta aparece como `mismo tamaño`:
   ábrelo y el diff te dirá si de verdad cambió. Si el tamaño difiere, es `distinto` con seguridad.
-- El escaneo está acotado (20 000 archivos por lado) y marca el resultado como truncado. Las carpetas
-  pesadas se excluyen por defecto; la lista no es configurable desde la interfaz.
+- El escaneo está acotado (20 000 archivos por lado) y marca el resultado como truncado. **Los archivos
+  que quedan fuera del tope no aparecen en la lista en absoluto** (ni como iguales ni como distintos), así
+  que si ves el aviso de truncado, compara carpetas más pequeñas para no dejar cambios sin revisar.
+  Ajustar las exclusiones es la forma más rápida de bajar el conteo.
 - El bastión comparte el secreto guardado del servidor.
 - Los archivos que existen solo en el servidor se listan, pero no tienen versión local para comparar.

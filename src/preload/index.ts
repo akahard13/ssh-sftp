@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { AppApi } from '../shared/api'
 import type {
   AuthChallenge,
+  CompareDefaults,
   CompareProgress,
   CompareResult,
   ConnectionStatus,
@@ -79,13 +80,17 @@ const api: AppApi = {
       ipcRenderer.invoke('remote:list-dirs', serverId, path)
   },
   compare: {
+    defaults: (): Promise<CompareDefaults> => ipcRenderer.invoke('compare:defaults'),
+    saveExcludes: (patterns: string[]): Promise<boolean> =>
+      ipcRenderer.invoke('compare:save-excludes', patterns),
     run: (
       requestId: string,
       serverId: string,
       remoteRoot: string,
-      localRoot: string
+      localRoot: string,
+      excluded: string[]
     ): Promise<CompareResult | null> =>
-      ipcRenderer.invoke('compare:run', requestId, serverId, remoteRoot, localRoot),
+      ipcRenderer.invoke('compare:run', requestId, serverId, remoteRoot, localRoot, excluded),
     cancel: (requestId: string): Promise<boolean> => ipcRenderer.invoke('compare:cancel', requestId),
     onProgress: (handler: (progress: CompareProgress) => void): (() => void) =>
       subscribe('evt:compare-progress', handler)
