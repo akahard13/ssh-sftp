@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import type { JSX, ReactNode } from 'react'
 import type { ConnectionStatus, ServerProfile } from '../../../shared/types'
 
 interface SidebarProps {
@@ -11,6 +11,7 @@ interface SidebarProps {
   onDelete: (profile: ServerProfile) => void
   onConnect: (id: string) => void
   onDisconnect: (id: string) => void
+  footer?: ReactNode
 }
 
 function statusLabel(status: ConnectionStatus | undefined): string {
@@ -37,7 +38,8 @@ export default function ServerSidebar({
   onEdit,
   onDelete,
   onConnect,
-  onDisconnect
+  onDisconnect,
+  footer
 }: SidebarProps): JSX.Element {
   return (
     <aside className="sidebar">
@@ -124,6 +126,7 @@ export default function ServerSidebar({
           <li className="empty-hint">Agrega tu primer servidor para empezar.</li>
         ) : null}
       </ul>
+      {footer ? <div className="sidebar-footer">{footer}</div> : null}
     </aside>
   )
 }

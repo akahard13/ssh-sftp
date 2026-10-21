@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { registerIpc, bootstrapStore, shutdown } from './ipc'
+import { registerUpdaterIpc } from './updater'
 
 const RENDERER_DEV_URL = process.env.ELECTRON_RENDERER_URL
 const isDev = Boolean(RENDERER_DEV_URL)
@@ -70,6 +71,7 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     await bootstrapStore()
     registerIpc(() => mainWindow)
+    registerUpdaterIpc(() => mainWindow)
     mainWindow = createWindow()
 
     app.on('activate', () => {

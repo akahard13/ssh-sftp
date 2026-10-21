@@ -11,6 +11,7 @@ import Modal from './components/Modal'
 import ServerDialog from './components/ServerDialog'
 import ServerSidebar from './components/ServerSidebar'
 import TerminalView from './components/TerminalView'
+import UpdatePanel from './components/UpdatePanel'
 
 type Tab = 'terminal' | 'compare'
 
@@ -115,6 +116,7 @@ export default function App(): JSX.Element {
         onDelete={(profile) => void remove(profile)}
         onConnect={(id) => void connect(id)}
         onDisconnect={(id) => void disconnect(id)}
+        footer={<UpdatePanel />}
       />
 
       <main className="content">

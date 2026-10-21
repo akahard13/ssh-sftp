@@ -12,6 +12,7 @@ import type {
   ServerProfile,
   TerminalDataEvent,
   TerminalExitEvent,
+  UpdateState,
   UploadRequest,
   UploadResult
 } from '../shared/types'
@@ -89,6 +90,14 @@ const api: AppApi = {
     ): Promise<FilePair> =>
       ipcRenderer.invoke('file:read-pair', serverId, remoteRoot, localRoot, relPath),
     upload: (request: UploadRequest): Promise<UploadResult> => ipcRenderer.invoke('file:upload', request)
+  },
+  updates: {
+    state: (): Promise<UpdateState> => ipcRenderer.invoke('updates:state'),
+    check: (): Promise<UpdateState> => ipcRenderer.invoke('updates:check'),
+    download: (): Promise<UpdateState> => ipcRenderer.invoke('updates:download'),
+    install: (): Promise<boolean> => ipcRenderer.invoke('updates:install'),
+    onState: (handler: (state: UpdateState) => void): (() => void) =>
+      subscribe('evt:update-state', handler)
   }
 }
 

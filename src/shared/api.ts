@@ -11,6 +11,7 @@ import type {
   ServerProfile,
   TerminalDataEvent,
   TerminalExitEvent,
+  UpdateState,
   UploadRequest,
   UploadResult
 } from './types'
@@ -69,5 +70,12 @@ export interface AppApi {
       relPath: string
     ): Promise<FilePair>
     upload(request: UploadRequest): Promise<UploadResult>
+  }
+  updates: {
+    state(): Promise<UpdateState>
+    check(): Promise<UpdateState>
+    download(): Promise<UpdateState>
+    install(): Promise<boolean>
+    onState(handler: (state: UpdateState) => void): Unsubscribe
   }
 }

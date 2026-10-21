@@ -12,7 +12,9 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test:diff": "esbuild tools/difftest.ts --bundle --platform=node --format=cjs --outfile=tools/difftest.cjs --log-level=warning && node tools/difftest.cjs",
-    "package": "electron-vite build && electron-builder --dir"
+    "package": "electron-vite build && electron-builder",
+    "package:dir": "electron-vite build && electron-builder --dir",
+    "release": "electron-vite build && electron-builder --publish always"
   },
   "build": {
     "appId": "com.company.ssh-sftp-manager",
@@ -25,6 +27,13 @@
       "package.json",
       "!**/*.map"
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "OWNER_DEL_REPO",
+        "repo": "REPO_DE_LA_APP"
+      }
+    ],
     "win": {
       "target": [
         "nsis"
@@ -32,9 +41,13 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "SSH SFTP Manager",
+      "artifactName": "${productName}-${version}-setup.${ext}"
     }
-  },
+  },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
@@ -51,6 +64,7 @@
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
+    "electron-updater": "^6.8.9",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "ssh2": "^1.17.0"

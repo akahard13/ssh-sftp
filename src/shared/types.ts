@@ -152,3 +152,21 @@ export interface AuditEvent {
   action: 'connect' | 'disconnect' | 'upload' | 'hostkey-trusted' | 'hostkey-mismatch'
   detail: string
 }
+
+export type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'ready'
+  | 'none'
+  | 'error'
+  | 'unsupported'
+
+export interface UpdateState {
+  status: UpdateStatus
+  currentVersion: string
+  version?: string
+  percent?: number
+  message?: string
+}
