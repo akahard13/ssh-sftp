@@ -77,20 +77,25 @@ entonces la app muestra "Actualizaciones no configuradas" y no intenta descargar
 
 ### Cómo publicar una versión
 
+**Todo sale de `version` en `package.json`**: el nombre de los assets
+(`SSH-SFTP-Manager-<version>-setup.exe`), el campo `version` de `latest.yml` **y el tag del release**,
+que electron-builder calcula como `v` + esa versión. Los tags de git **no influyen**: si creas `v0.1.5`
+pero `package.json` sigue en `0.1.4`, se publica el release `v0.1.4` y tu tag queda huérfano.
+
 ```powershell
-# 1. Sube la versión en package.json ("version": "0.1.1")
-# 2. Crea y sube el tag ANTES de publicar (ver nota abajo)
-git tag v0.1.1
-git push origin v0.1.1
-# 3. Compila y publica
+# 1. Sube "version" en package.json (por ejemplo a "0.1.5")
+# 2. Commitea el cambio
+git add package.json
+git commit -m "chore(release): 0.1.5"
+# 3. Compila y publica; electron-builder crea el tag y el release
 $env:GH_TOKEN = "github_pat_..."
 npm run release
 ```
 
-> **El tag debe existir antes.** GitHub rechaza crear un release *publicado* cuyo tag todavía no
-> existe, y devuelve un error con código `custom` que electron-builder no reconoce como recuperable
-> (solo sabe tratar `already_exists`). Resultado: el build se corta y el release queda creado a medias.
-> Creando el tag primero el problema desaparece.
+> **El tag debe coincidir con la versión** (`v<version>`). Puedes crearlo y subirlo antes
+> (`git tag v0.1.5 && git push origin v0.1.5`): eso evitaba el error `422 Published releases must have a
+> valid tag` que aparecía antes del parche de `app-builder-lib`. Pero si el tag no coincide con
+> `package.json`, la publicación va al tag derivado de la versión y los dos quedan desincronizados.
 >
 > Si un release queda incompleto, **vuelve a ejecutar `npm run release`**: al detectar el release
 > existente (publicado hace menos de 2 horas) vuelve a subir los archivos y sobreescribe los que ya
