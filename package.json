@@ -31,7 +31,8 @@
       {
         "provider": "github",
         "owner": "akahard13",
-        "repo": "ssh-sftp"
+        "repo": "ssh-sftp",
+        "releaseType": "release"
       }
     ],
     "win": {
