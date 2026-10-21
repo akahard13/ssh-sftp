@@ -244,6 +244,25 @@ body {
   background: var(--panel);
 }
 
+.topbar.compact {
+  padding: 3px 8px;
+  gap: 10px;
+}
+
+.topbar-min {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.icon {
+  padding: 2px 8px;
+  line-height: 1.2;
+}
+
 .topbar-title {
   display: flex;
   align-items: center;
@@ -533,15 +552,17 @@ select:focus {
   background: var(--panel);
 }
 
+/* Tres paneles que se reparten el ancho: la lista de archivos se comprime hasta
+   140px y el diff nunca baja de 280px, así que ninguno colapsa a cero. */
 .compare-body {
   flex: 1;
   min-height: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(140px, 300px) minmax(280px, 1fr);
 }
 
 .file-list {
-  width: 330px;
-  flex: 0 0 330px;
+  min-width: 0;
   border-right: 1px solid var(--border);
   overflow-y: auto;
   background: var(--panel);
@@ -673,7 +694,6 @@ select:focus {
 }
 
 .diff-area {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -719,59 +739,51 @@ select:focus {
 .diff-body {
   flex: 1;
   min-height: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 
+.diff-body.with-result {
+  grid-template-columns: minmax(160px, 1fr) minmax(140px, 380px);
+}
+
+/* El diff es una sola grilla: comparte el ancho de columnas entre todas las filas
+   y permite desplazar el área completa, igual que el panel de resultado. */
 .diff-scroll {
   flex: 1;
   min-width: 0;
-  overflow-y: auto;
+  overflow: auto;
   font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
   font-size: 12px;
 }
 
-.diff-columns {
+.diff-grid {
   display: grid;
-  grid-template-columns: 20px 44px 1fr 44px 1fr;
-  position: sticky;
-  top: 0;
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--border);
-  z-index: 1;
+  grid-template-columns: 20px 44px auto 44px auto;
+  width: max-content;
+  min-width: 100%;
 }
 
 .diff-col-label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-2);
   padding: 4px 8px;
   font-size: 11px;
   color: var(--muted);
+  border-bottom: 1px solid var(--border);
   font-family: 'Segoe UI', system-ui, sans-serif;
-}
-
-.diff-columns .diff-col-label:first-of-type {
-  grid-column: 1 / 4;
-}
-
-.diff-grid {
-  display: flex;
-  flex-direction: column;
-}
-
-.diff-row {
-  display: grid;
-  grid-template-columns: 20px 44px 1fr 44px 1fr;
-  align-items: stretch;
-  line-height: 18px;
-}
-
-.diff-row.applied {
-  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .diff-gutter {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-top: 1px;
+}
+
+.diff-gutter.applied {
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .diff-gutter input {
@@ -787,6 +799,7 @@ select:focus {
   color: #556172;
   user-select: none;
   font-size: 11px;
+  line-height: 18px;
 }
 
 .diff-no.del,
@@ -802,8 +815,7 @@ select:focus {
 .diff-code {
   padding: 0 6px;
   white-space: pre;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 18px;
   border-left: 1px solid #1c2431;
 }
 
@@ -812,6 +824,7 @@ select:focus {
 }
 
 .diff-collapse {
+  grid-column: 1 / -1;
   padding: 2px 12px;
   color: var(--muted);
   background: #11161e;
@@ -822,8 +835,7 @@ select:focus {
 }
 
 .result-pane {
-  width: 380px;
-  flex: 0 0 380px;
+  min-width: 0;
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
