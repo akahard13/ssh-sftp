@@ -30,8 +30,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "OWNER_DEL_REPO",
-        "repo": "REPO_DE_LA_APP"
+        "owner": "akahard13",
+        "repo": "ssh-sftp"
       }
     ],
     "win": {

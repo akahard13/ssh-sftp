@@ -32,7 +32,9 @@ node node_modules/electron/install.js
 | `npm run build` | Compila `out/` para producción |
 | `npm run typecheck` | Verifica tipos de los proyectos Node y Web |
 | `npm run test:diff` | Pruebas del motor de diff/merge (incluye fuzzing) |
-| `npm run package` | Empaqueta con electron-builder (descarga sus herramientas la primera vez) |
+| `npm run package` | Genera el **instalador NSIS** en `dist/` (necesario para auto-update) |
+| `npm run package:dir` | Genera solo la carpeta portable `dist/win-unpacked` (sin instalador) |
+| `npm run release` | Igual que `package` y además publica el release en GitHub (requiere `GH_TOKEN`) |
 
 ## Flujo de uso
 
@@ -47,6 +49,59 @@ node node_modules/electron/install.js
    por cada cambio, más un tercer panel con el **archivo generado**.
 6. **Subir**: `Subir seleccionados` escribe en el servidor solo los bloques marcados, de forma atómica y
    con respaldo opcional.
+
+## Actualizaciones (auto-update)
+
+La app usa `electron-updater` contra **GitHub Releases**. Antes de la primera publicación hay que
+rellenar en [package.json](./package.json) (`build.publish`) el `owner` y el `repo` reales; hasta
+entonces la app muestra "Actualizaciones no configuradas" y no intenta descargar nada.
+
+### Requisitos
+
+- La app debe estar **instalada con el instalador NSIS** (`npm run package`). La carpeta portable de
+  `--dir` no se puede auto-actualizar.
+- El instalador se configura como `perMachine: false`: se instala en `%LOCALAPPDATA%` y **no pide
+  administrador**, así que las actualizaciones también se aplican sin UAC.
+- El repo de releases es privado, y `electron-updater` necesita un token en **cada equipo**:
+
+  ```powershell
+  setx GH_TOKEN "github_pat_..."   # token fine-grained, permiso solo de lectura de Contents
+  ```
+
+  Cerrar y reabrir la app para que tome la variable. Un token sin ese permiso produce el aviso
+  "El repositorio de releases es privado y falta la credencial".
+
+### Cómo publicar una versión
+
+```powershell
+# 1. Sube la versión en package.json ("version": "0.1.1")
+# 2. Compila y publica
+$env:GH_TOKEN = "github_pat_..."
+npm run release
+```
+
+Esto sube el `.exe` del instalador, el `latest.yml` y el `.blockmap` al release de GitHub. El
+`.blockmap` es lo que permite descargas diferenciales: solo se bajan los bloques que cambiaron.
+
+### Cómo se comporta la app
+
+- Verifica al arrancar (15 s después) y luego cada 6 horas; también hay un botón manual "Buscar
+  actualizaciones" en el panel inferior de la barra lateral.
+- Descarga **solo si el usuario lo pide** (`autoDownload = false`) y muestra el progreso.
+- Al terminar avisa "reiniciar e instalar"; si no, aplica la actualización al cerrar la app
+  (`autoInstallOnAppQuit = true`).
+
+### Advertencia de seguridad
+
+Con auto-update, quien controle el canal de releases ejecuta código en todas las máquinas. Por eso:
+
+- El token debe ser **fine-grained, de solo lectura de `Contents` y limitado a ese repo**, y rotarse
+  si se filtra. Nunca lo pongas dentro del código de la app.
+- El canal va por HTTPS de GitHub, pero **sin firma de código** Windows seguirá mostrando SmartScreen
+  como editor desconocido. Si la empresa consigue un certificado, configurar `win.certificateFile` /
+  `CSC_LINK` en electron-builder es el siguiente paso natural.
+- Para volver a una versión anterior hay que republicar con un número de versión **mayor**, porque el
+  updater solo compara versiones.
 
 ## Modelo de seguridad
 
@@ -75,6 +130,7 @@ src/
   main/            proceso principal de Electron
     index.ts       ventana, ciclo de vida y endurecimiento
     ipc.ts         superficie IPC con validación
+    updater.ts     auto-actualización (electron-updater)
     store.ts       perfiles, secretos cifrados, known_hosts y auditoría
     validate.ts    validadores de entrada
     ssh/
@@ -84,7 +140,7 @@ src/
   preload/         puente seguro (contextBridge) hacia el renderer
   renderer/        interfaz React
     src/lib/       motor de diff (Myers) y construcción del merge
-    src/components Sidebar, Terminal, Comparar y Diff
+    src/components Sidebar, Terminal, Comparar, Diff y panel de actualizaciones
   shared/          tipos y contrato de la API
 tools/difftest.ts  pruebas del motor de diff
 ```
@@ -101,6 +157,9 @@ tools/difftest.ts  pruebas del motor de diff
 
 ## Límites conocidos
 
+- `build.publish` en [package.json](./package.json) tiene `owner`/`repo` de ejemplo: hay que
+  rellenarlos con el repositorio real antes de publicar releases.
+- No hay firma de código, así que SmartScreen avisará como editor desconocido.
 - El diff solo aplica a archivos de texto y de hasta 4 MB; los binarios o más grandes se avisan y no se
   comparan.
 - El escaneo de directorios está acotado (20 000 entradas por lado) y marca el resultado como truncado.
