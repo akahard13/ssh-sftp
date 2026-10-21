@@ -96,6 +96,16 @@ npm run release
 > existente (publicado hace menos de 2 horas) vuelve a subir los archivos y sobreescribe los que ya
 > estaban. Verifica siempre que el release tenga **3 assets**: el `.exe`, el `.blockmap` y `latest.yml`.
 > Sin `latest.yml` la app no puede actualizarse.
+>
+> **Parche local obligatorio (`patches/`).** `app-builder-lib@26.15.3` tiene un bug abierto
+> ([electron-builder#10026](https://github.com/electron-userland/electron-builder/issues/10026)): los
+> artefactos se publican en paralelo y la caché del publisher no se rellena hasta después del `await`,
+> así que cada artefacto crea **su propio release del mismo tag** y reparte los assets (el `.exe` en un
+> release y `latest.yml` + `.blockmap` en otro). Eso rompe el auto-update: la URL por tag
+> `.../releases/download/vX/latest.yml` responde 404. `npm install` aplica
+> `patches/app-builder-lib+26.15.3.patch` mediante el script `postinstall` (`patch-package`); **no
+> elimines ese `postinstall`**. El fix oficial está en la rama 27.x (todavía en alpha), así que al
+> actualizar `electron-builder` revisa si ya lo incluye y, en ese caso, borra el parche.
 
 Esto sube el `.exe` del instalador, el `latest.yml` y el `.blockmap` al release de GitHub. El
 `.blockmap` es lo que permite descargas diferenciales: solo se bajan los bloques que cambiaron.

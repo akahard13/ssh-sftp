@@ -1,0 +1,38 @@
+diff --git a/node_modules/app-builder-lib/out/publish/PublishManager.js b/node_modules/app-builder-lib/out/publish/PublishManager.js
+index 6e8918f..7105941 100644
+--- a/node_modules/app-builder-lib/out/publish/PublishManager.js
++++ b/node_modules/app-builder-lib/out/publish/PublishManager.js
+@@ -163,16 +163,25 @@ class PublishManager {
+             this.taskManager.addTask((0, updateInfoBuilder_1.createUpdateInfoTasks)(event, publishConfigs).then(it => this.updateFileWriteTask.push(...it)));
+         }
+     }
+-    async getOrCreatePublisher(publishConfig, appInfo) {
++    getOrCreatePublisher(publishConfig, appInfo) {
+         // to not include token into cache key
+         const providerCacheKey = (0, builder_util_1.safeStringifyJson)(publishConfig);
+-        let publisher = this.nameToPublisher.get(providerCacheKey);
+-        if (publisher == null) {
+-            publisher = await createPublisher(this, appInfo.version, publishConfig, this.publishOptions, this.packager);
+-            this.nameToPublisher.set(providerCacheKey, publisher);
+-            builder_util_1.log.info({ publisher: publisher.toString() }, "publishing");
+-        }
+-        return publisher;
++        let publisherPromise = this.nameToPublisher.get(providerCacheKey);
++        if (publisherPromise == null) {
++            // Cache the in-flight promise synchronously so concurrent artifact uploads share a single
++            // publisher (and therefore a single release). See electron-builder#10026 / PR#10028.
++            publisherPromise = createPublisher(this, appInfo.version, publishConfig, this.publishOptions, this.packager).then(publisher => {
++                if (publisher != null) {
++                    builder_util_1.log.info({ publisher: publisher.toString() }, "publishing");
++                }
++                return publisher;
++            }, error => {
++                this.nameToPublisher.delete(providerCacheKey);
++                throw error;
++            });
++            this.nameToPublisher.set(providerCacheKey, publisherPromise);
++        }
++        return publisherPromise;
+     }
+     // noinspection JSUnusedGlobalSymbols
+     cancelTasks() {
