@@ -18,8 +18,10 @@
   },
   "include": [
     "electron.vite.config.ts",
+    "vite.web.config.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
+    "src/server/**/*.ts",
     "src/shared/**/*.ts"
   ]
 }

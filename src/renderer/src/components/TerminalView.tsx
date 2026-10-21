@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { api } from '../lib/api'
 
 interface Entry {
   term: Terminal
@@ -12,6 +13,8 @@ interface Entry {
 
 const cache = new Map<string, Entry>()
 const byTerminalId = new Map<string, Terminal>()
+/** Salida que llegó antes de asociar el terminalId al xterm (típico en web). */
+const pendingData = new Map<string, string[]>()
 let dispatcherReady = false
 
 const TERM_THEME = {
@@ -32,10 +35,18 @@ const TERM_THEME = {
 function ensureDispatcher(): void {
   if (dispatcherReady) return
   dispatcherReady = true
-  window.api.terminal.onData(({ terminalId, data }) => {
-    byTerminalId.get(terminalId)?.write(data)
+  api.terminal.onData(({ terminalId, data }) => {
+    const term = byTerminalId.get(terminalId)
+    if (term) {
+      term.write(data)
+      return
+    }
+    const queued = pendingData.get(terminalId) ?? []
+    if (queued.length < 200) queued.push(data)
+    pendingData.set(terminalId, queued)
   })
-  window.api.terminal.onExit(({ terminalId }) => {
+  api.terminal.onExit(({ terminalId }) => {
+    pendingData.delete(terminalId)
     const term = byTerminalId.get(terminalId)
     if (!term) return
     term.write('\r\n\x1b[90m[sesión finalizada]\x1b[0m\r\n')
@@ -48,7 +59,8 @@ export function disposeTerminal(serverId: string): void {
   if (!entry) return
   if (entry.terminalId) {
     byTerminalId.delete(entry.terminalId)
-    void window.api.terminal.close(entry.terminalId)
+    pendingData.delete(entry.terminalId)
+    void api.terminal.close(entry.terminalId)
   }
   entry.term.dispose()
   cache.delete(serverId)
@@ -89,16 +101,21 @@ export default function TerminalView({ serverId, visible }: TerminalViewProps): 
         /* container not measured yet */
       }
 
-      window.api.terminal
+      api.terminal
         .open(serverId, term.cols, term.rows)
         .then(({ terminalId }) => {
           created.terminalId = terminalId
           byTerminalId.set(terminalId, term)
+          const queued = pendingData.get(terminalId)
+          if (queued) {
+            pendingData.delete(terminalId)
+            for (const chunk of queued) term.write(chunk)
+          }
           term.onData((data) => {
-            if (created.terminalId) void window.api.terminal.write(created.terminalId, data)
+            if (created.terminalId) void api.terminal.write(created.terminalId, data)
           })
           term.onResize(({ cols, rows }) => {
-            if (created.terminalId) void window.api.terminal.resize(created.terminalId, cols, rows)
+            if (created.terminalId) void api.terminal.resize(created.terminalId, cols, rows)
           })
           term.focus()
         })

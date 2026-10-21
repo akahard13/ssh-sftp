@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { JSX } from 'react'
 import type { FilePair } from '../../../shared/types'
+import { api } from '../lib/api'
 import { buildDiff, buildResult, newFileDiff, splitLines } from '../lib/merge'
 
 const MISSING_REMOTE_HASH = 'MISSING'
@@ -93,7 +94,7 @@ export default function DiffView({ serverId, pair, onUploaded }: DiffViewProps):
     }
     setUploading(true)
     try {
-      const result = await window.api.files.upload({
+      const result = await api.files.upload({
         serverId,
         remotePath: pair.remotePath,
         content: generated,

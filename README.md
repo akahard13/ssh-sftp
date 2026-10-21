@@ -1,40 +1,271 @@
 # SSH · SFTP Manager
 
-App de escritorio para administrar **múltiples sesiones SSH** contra servidores privados, con terminal
-interactiva y un comparador de directorios que permite **subir solo los cambios seleccionados** por SFTP.
+App para administrar **múltiples sesiones SSH** contra servidores privados, con terminal interactiva y un
+comparador de directorios que permite **subir solo los cambios seleccionados** por SFTP.
+
+Se puede usar de dos formas con el mismo código:
+
+| Modo | Dónde corre | Cómo se abre |
+| --- | --- | --- |
+| **Escritorio** | Windows (instalador NSIS) o Linux (AppImage/deb) | Ventana nativa de Electron |
+| **Servidor web** | Linux, macOS, Windows o un contenedor | Navegador en `http://IP-DEL-EQUIPO:PUERTO` |
+
+En ambos modos la sesión SSH y las operaciones SFTP ocurren en el equipo donde corre la app; el navegador
+solo dibuja la interfaz. Así puedes instalarlo en un servidor Linux y usarlo desde el portátil, la tablet
+o cualquier equipo de la red.
 
 No abre varias ventanas: mantiene una sesión (y sus canales) por servidor y tú eliges cuál usar.
 
 ## Requisitos
 
-- Node.js 20 o superior (probado con 22).
-- Windows en el equipo cliente (la ventana usa `safeStorage`/DPAPI para cifrar secretos).
+- **Node.js 20 o superior** (probado con 22 y 24) para el modo servidor y para compilar.
+- **Windows** en el equipo cliente si usas el instalador de escritorio (la ventana usa
+  `safeStorage`/DPAPI para cifrar secretos).
 - Acceso de red a los servidores (VPN o bastión si aplica).
+- En Linux/macOS, si usas autenticación por `ssh-agent`, el servicio necesita `SSH_AUTH_SOCK`.
 
 ## Instalación
 
-```powershell
+### Windows: instalador de escritorio
+
+Descarga `SSH-SFTP-Manager-<versión>-setup.exe` desde
+[GitHub Releases](https://github.com/akahard13/ssh-sftp/releases) y ejecútalo. El instalador es
+`perMachine: false`: se instala en `%LOCALAPPDATA%` sin pedir administrador y se actualiza solo
+(ver [Actualizaciones](#actualizaciones)).
+
+### Servidor web con `npx` (recomendado para Linux/macOS)
+
+```bash
+npx ssh-sftp-manager --host 0.0.0.0 --port 7777
+```
+
+La primera vez genera un token, imprime una URL como
+`http://192.168.1.20:7777/?token=...` y abre el navegador. Abre esa misma URL desde cualquier
+dispositivo de la red.
+
+> `npx` descarga el paquete desde npm. Si todavía no está publicado, usa la
+> [instalación desde el código](#desde-el-código-desarrollo).
+
+### Servidor web con `npm` global
+
+```bash
+npm install -g ssh-sftp-manager
+ssh-sftp-manager --host 0.0.0.0 --port 7777
+```
+
+### Servidor web con `curl`
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/akahard13/ssh-sftp/main/scripts/install.sh | bash
+```
+
+El instalador comprueba Node/npm, instala el paquete globalmente y, si no hay permisos, cae a
+`~/.local`. Para instalarlo y arrancarlo en un solo paso:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/akahard13/ssh-sftp/main/scripts/install.sh | bash -s -- --start
+```
+
+Opciones del instalador: `--prefix <ruta>`, `--port <puerto>`, `--start`, `--no-open`, `--help`.
+También acepta `SSH_SFTP_VERSION`, `SSH_SFTP_PREFIX`, `SSH_SFTP_HOST` y `SSH_SFTP_PORT`.
+
+### Linux: paquete de escritorio
+
+```bash
 npm install
-npm run dev        # desarrollo con recarga en caliente
+npm run build
+npm run package:linux    # genera AppImage y .deb en dist/
+```
+
+También puedes usar el modo servidor web en Linux sin instalar Electron. Para servidores headless es
+la opción recomendada. El escritorio Linux cifra los secretos con **libsecret**; si el sistema no lo
+tiene, la app avisará y no podrá guardar contraseñas (los perfiles sin secreto, como `ssh-agent`, sí
+funcionan). El auto-update de escritorio está limitado a Windows.
+
+### Desde el código (desarrollo)
+
+```bash
+npm install
+npm run dev        # escritorio Electron con recarga en caliente
+npm run serve      # compila out/web + out/server y arranca el servidor web
 ```
 
 Si `npm install` no descarga el binario de Electron (proxy/red restringida):
 
-```powershell
+```bash
 node node_modules/electron/install.js
+```
+
+Para probar el paquete npm antes de publicarlo:
+
+```bash
+npm run build:web
+npm pack             # revisa el .tgz
+npm install -g ./ssh-sftp-manager-0.2.0.tgz
 ```
 
 ## Comandos
 
 | Comando | Descripción |
 | --- | --- |
-| `npm run dev` | Compila main/preload y lanza la app con Vite en modo desarrollo |
-| `npm run build` | Compila `out/` para producción |
+| `npm run dev` | Compila main/preload y lanza Electron con Vite en modo desarrollo |
+| `npm run build` | Compila `out/main`, `out/preload` y `out/renderer` (escritorio) |
+| `npm run build:web` | Compila el renderer web en `out/web` y el CLI en `out/server` |
+| `npm run server` | Arranca el servidor web usando los artefactos ya compilados |
+| `npm run serve` | `build:web` + `server` (para probar en local) |
 | `npm run typecheck` | Verifica tipos de los proyectos Node y Web |
-| `npm test` | Pruebas del motor de diff/merge y del recorrido de directorios |
+| `npm test` | Pruebas de diff/merge, recorrido de directorios y servidor web |
+| `npm run test:server` | Solo las pruebas de integración HTTP/WebSocket |
 | `npm run package` | Genera el **instalador NSIS** en `dist/` (necesario para auto-update) |
-| `npm run package:dir` | Genera solo la carpeta portable `dist/win-unpacked` (sin instalador) |
+| `npm run package:dir` | Genera solo la carpeta portable `dist/win-unpacked` |
+| `npm run package:linux` | Genera AppImage y `.deb` en `dist/` |
 | `npm run release` | Igual que `package` y además publica el release en GitHub (requiere `GH_TOKEN`) |
+
+## Modo servidor web
+
+### Arranque y acceso
+
+```bash
+# Solo este equipo (por defecto)
+npx ssh-sftp-manager
+
+# Toda la red local
+npx ssh-sftp-manager --host 0.0.0.0 --port 7777
+
+# HTTPS directo
+npx ssh-sftp-manager --host 0.0.0.0 --port 7777 \
+  --tls-cert /etc/ssl/certs/ssh-sftp.crt \
+  --tls-key /etc/ssl/private/ssh-sftp.key
+```
+
+Al arrancar imprime una URL por cada interfaz disponible, cada una con su `?token=`. Al abrirla, el
+token se canjea por una cookie `HttpOnly` y desaparece de la barra de direcciones. La interfaz se adapta
+a pantallas pequeñas (tablet y móvil): la barra lateral pasa arriba y el comparador a una columna.
+
+- Por defecto escucha solo en `127.0.0.1`: úsalo desde la misma máquina.
+- Con `--host 0.0.0.0` acepta conexiones de la LAN. Habilita el puerto en el firewall
+  (`ufw allow 7777/tcp`, grupo de seguridad de la nube, etc.).
+- Si no abre el navegador o no hay entorno gráfico, usa la URL impresa.
+- `--no-open` evita el intento de abrir el navegador (útil en systemd o CI).
+
+### Opciones y variables de entorno
+
+| Opción | Variable | Valor por defecto | Descripción |
+| --- | --- | --- | --- |
+| `--host, -H` | `SSH_SFTP_HOST` | `127.0.0.1` | Interfaz de escucha. `0.0.0.0` para la LAN. |
+| `--port, -p` | `SSH_SFTP_PORT` o `PORT` | `7777` | Puerto HTTP/HTTPS. `0` elige uno libre. |
+| `--data-dir, -d` | `SSH_SFTP_DATA_DIR` | ver [Datos](#dónde-se-guardan-los-datos) | Perfiles, secretos, known_hosts y auditoría. |
+| `--web-dir, -w` | `SSH_SFTP_WEB_DIR` | `out/web` junto al CLI | Renderer compilado que se sirve. |
+| `--token, -t` | `SSH_SFTP_TOKEN` | token persistente | Token de acceso (mínimo 16 caracteres). |
+| `--tls-cert` | `SSH_SFTP_TLS_CERT` | — | Certificado PEM para HTTPS. |
+| `--tls-key` | `SSH_SFTP_TLS_KEY` | — | Llave privada PEM. |
+| `--trust-proxy` | `SSH_SFTP_TRUST_PROXY` | `false` | Confía en `X-Forwarded-Proto` para marcar la cookie `Secure`. |
+| `--open / --no-open` | `SSH_SFTP_OPEN` | abierto | Abre el navegador al arrancar. |
+| `--help, -h` | — | — | Ayuda. |
+| `--version, -v` | — | — | Versión. |
+
+Las variables `SSH_SFTP_MASTER_KEY` (32 bytes en base64 o hex) permiten usar una llave de cifrado
+externa; si no se define, se crea `<data-dir>/secret.key` con permisos `0600`.
+
+### Token y rotación
+
+El token se guarda en `<data-dir>/server-token` con permisos `0600` para que las sesiones sobrevivan a
+reinicios. Para rotarlo:
+
+1. Detén el servidor.
+2. Borra `<data-dir>/server-token` (o define un `SSH_SFTP_TOKEN` nuevo y largo).
+3. Arranca de nuevo y usa la URL con el token nuevo.
+
+El token es una **credencial administrativa**: permite abrir SSH, leer archivos del host y escribir en
+los servidores. No lo compartas por canales inseguros. Si usas `--token`, queda en el historial del
+shell y en la lista de procesos; prefiere la variable `SSH_SFTP_TOKEN`.
+
+### Dónde se guardan los datos
+
+| Sistema | Carpeta por defecto |
+| --- | --- |
+| Linux | `~/.config/ssh-sftp-manager` (o `$XDG_CONFIG_HOME`) |
+| macOS | `~/Library/Application Support/ssh-sftp-manager` |
+| Windows | `%APPDATA%\ssh-sftp-manager` |
+
+Contenido: `profiles.json`, `secrets.json`, `known_hosts.json`, `settings.json`, `audit.json`,
+`server-token` y `secret.key`. El escritorio Electron usa su propio directorio de usuario; el modo
+servidor no lee esa carpeta salvo que le pases `--data-dir`.
+
+Los secretos del modo servidor se cifran con **AES-256-GCM**. Protege `secrets.json` frente a copias
+sueltas, pero la llave vive en el mismo directorio: quien pueda leer toda la carpeta (o ejecutar como el
+mismo usuario) puede descifrarlos. Restringe permisos del directorio y de la cuenta del servicio. Si
+pierdes `secret.key` (y no usas `SSH_SFTP_MASTER_KEY`), deberás volver a escribir las contraseñas y
+passphrases de los perfiles.
+
+### systemd (Linux)
+
+```ini
+[Unit]
+Description=SSH · SFTP Manager (servidor web)
+After=network.target
+
+[Service]
+Type=simple
+User=deploy
+Environment=SSH_SFTP_HOST=0.0.0.0
+Environment=SSH_SFTP_PORT=7777
+Environment=SSH_SFTP_DATA_DIR=/var/lib/ssh-sftp-manager
+# Si usas ssh-agent:
+# Environment=SSH_AUTH_SOCK=/run/user/1000/ssh-agent.socket
+ExecStart=/usr/local/bin/ssh-sftp-manager --no-open
+Restart=on-failure
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo mkdir -p /var/lib/ssh-sftp-manager
+sudo chown deploy:deploy /var/lib/ssh-sftp-manager
+sudo systemctl daemon-reload
+sudo systemctl enable --now ssh-sftp-manager
+sudo journalctl -u ssh-sftp-manager -f   # muestra la URL con el token
+```
+
+### Reverse proxy con TLS
+
+Si prefieres terminar TLS en nginx/Caddy y dejar el servicio en `127.0.0.1`, el proxy **debe conservar
+el `Host`** y reenviar `Upgrade` para el WebSocket:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name ssh.ejemplo.com;
+
+    ssl_certificate     /etc/ssl/certs/ssh-sftp.crt;
+    ssl_certificate_key /etc/ssl/private/ssh-sftp.key;
+
+    # Las subidas viajan por HTTP: deja margen sobre el límite de la app (32 MB).
+    client_max_body_size 100m;
+
+    location / {
+        proxy_pass http://127.0.0.1:7777;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+Arranca el servicio con `--trust-proxy` para que la cookie se marque `Secure`. La CSP y la validación
+de `Origin` usan el `Host` de la petición: si el proxy no lo conserva, el navegador rechazará el
+WebSocket.
+
+### Varios dispositivos
+
+Varias pestañas o dispositivos pueden abrir la misma instancia. Comparten las mismas sesiones SSH,
+terminales y tokens de acceso; la app está pensada para un operador. Si dos personas escriben en la
+misma terminal, verán y enviarán las mismas pulsaciones.
 
 ## Flujo de uso
 
@@ -49,18 +280,22 @@ node node_modules/electron/install.js
    desplegar todo; `Expandir` y `Cerrar` abren o pliegan el árbol completo.
    Con el botón **Exclusiones** ajustas qué se ignora antes de comparar: acepta nombres de carpeta o de
    archivo y comodines `*` (`node_modules`, `*.log`, `config/local.php`). Lo que escribas queda guardado.
+   En el modo web, el botón **Explorar…** abre un navegador de carpetas **del equipo que ejecuta el
+   servicio**, porque los diálogos nativos no existen en el navegador.
 5. **Revisar un archivo**: se abre el diff a dos columnas (servidor ↔ local) con un bloque seleccionable
    por cada cambio, más un tercer panel con el **archivo generado**.
 6. **Subir**: `Subir seleccionados` escribe en el servidor solo los bloques marcados, de forma atómica y
    con respaldo opcional.
 
-## Actualizaciones (auto-update)
+## Actualizaciones
+
+### Escritorio (Windows)
 
 La app usa `electron-updater` contra **GitHub Releases**. Antes de la primera publicación hay que
 rellenar en [package.json](./package.json) (`build.publish`) el `owner` y el `repo` reales; hasta
 entonces la app muestra "Actualizaciones no configuradas" y no intenta descargar nada.
 
-### Requisitos
+#### Requisitos
 
 - La app debe estar **instalada con el instalador NSIS** (`npm run package`). La carpeta portable de
   `--dir` no se puede auto-actualizar.
@@ -75,13 +310,13 @@ entonces la app muestra "Actualizaciones no configuradas" y no intenta descargar
   Cerrar y reabrir la app para que tome la variable. Un token sin ese permiso produce el aviso
   "El repositorio de releases es privado y falta la credencial".
 
-### Cómo publicar una versión
+#### Cómo publicar una versión
 
 ```powershell
-# 1. Sube la versión en package.json ("version": "0.1.1")
+# 1. Sube la versión en package.json ("version": "0.2.1")
 # 2. Crea y sube el tag ANTES de publicar (ver nota abajo)
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.2.1
+git push origin v0.2.1
 # 3. Compila y publica
 $env:GH_TOKEN = "github_pat_..."
 npm run release
@@ -115,7 +350,7 @@ Esto sube el `.exe` del instalador, el `latest.yml` y el `.blockmap` al release 
 > `npm run release`, sube el archivo sin renombrarlo: cualquier cambio de nombre hace que la app reciba
 > un 404 al buscar la actualización.
 
-### Cómo se comporta la app
+#### Cómo se comporta la app
 
 - Verifica al arrancar (15 s después) y luego cada 6 horas; también hay un botón manual "Buscar
   actualizaciones" en el panel inferior de la barra lateral.
@@ -123,27 +358,49 @@ Esto sube el `.exe` del instalador, el `latest.yml` y el `.blockmap` al release 
 - Al terminar avisa "reiniciar e instalar"; si no, aplica la actualización al cerrar la app
   (`autoInstallOnAppQuit = true`).
 
-### Advertencia de seguridad
+### Servidor web (npm)
 
-Con auto-update, quien controle el canal de releases ejecuta código en todas las máquinas. Por eso:
+El modo servidor **no se autoactualiza**; el panel muestra un aviso y el botón queda deshabilitado.
+Actualiza desde la terminal y reinicia el servicio:
 
-- El token debe ser **fine-grained, de solo lectura de `Contents` y limitado a ese repo**, y rotarse
-  si se filtra. Nunca lo pongas dentro del código de la app.
-- El canal va por HTTPS de GitHub, pero **sin firma de código** Windows seguirá mostrando SmartScreen
-  como editor desconocido. Si la empresa consigue un certificado, configurar `win.certificateFile` /
-  `CSC_LINK` en electron-builder es el siguiente paso natural.
-- Para volver a una versión anterior hay que republicar con un número de versión **mayor**, porque el
-  updater solo compara versiones.
+```bash
+npm install -g ssh-sftp-manager@latest
+sudo systemctl restart ssh-sftp-manager
+```
+
+Los perfiles y secretos quedan en `<data-dir>` y sobreviven a la actualización.
+
+## Publicar el paquete en npm
+
+`prepublishOnly` ejecuta `typecheck`, toda la suite y `build:web` antes de empaquetar. El paquete
+incluye `out/server`, `out/web`, `scripts/install.sh` y este README; no incluye Electron.
+
+```bash
+npm login
+npm version 0.2.1 --no-git-tag-version
+npm publish
+```
+
+Comprueba el contenido antes con `npm pack --dry-run`. El nombre `ssh-sftp-manager` debe estar
+disponible en el registro.
 
 ## Modelo de seguridad
 
 - **Verificación de host key obligatoria** (TOFU con `known_hosts` propio). Si la huella cambia, la
   conexión se bloquea y se avisa; nunca se acepta automáticamente.
-- **Secretos cifrados** con `safeStorage` (DPAPI en Windows) en un archivo aparte con permisos `0600`.
-  Las contraseñas y passphrases nunca llegan al proceso de renderizado ni se escriben en logs.
-- **Proceso de renderizado aislado**: `contextIsolation: true`, `nodeIntegration: false`,
+- **Secretos cifrados**:
+  - Escritorio: `safeStorage` (DPAPI en Windows, Keychain en macOS, libsecret en Linux), en un archivo
+    aparte con permisos `0600`.
+  - Servidor: AES-256-GCM con una llave `0600` en el directorio de datos (o `SSH_SFTP_MASTER_KEY`).
+  Las contraseñas y passphrases nunca llegan al renderer ni se escriben en logs.
+- **Autenticación web por token**: cookie de sesión `HttpOnly`, `SameSite=Strict` y `Secure` bajo TLS.
+  La cookie guarda un HMAC del token, no el token. Los POST y el WebSocket validan `Origin`; el login
+  tiene límite de intentos por IP.
+- **Superficie mínima**: el servidor solo sirve `out/web` y una API RPC con métodos conocidos; rechaza
+  `..` en rutas estáticas y exige sesión incluso para los assets.
+- **Proceso de renderizado aislado** (escritorio): `contextIsolation: true`, `nodeIntegration: false`,
   `sandbox: true`, sin `webview`, CSP estricta en producción y navegación bloqueada.
-- **Superficie IPC mínima** y validada: cada mensaje se comprueba campo por campo antes de usarse.
+- **Superficie IPC/RPC mínima y validada**: cada mensaje se comprueba campo por campo antes de usarse.
 - **Sin inyección de comandos**: se usan las APIs de SFTP, no se construyen cadenas de shell.
 - **Rutas acotadas**: toda operación remota se valida contra el directorio base del servidor
   (`assertInsideRoot`) para impedir salir de él.
@@ -155,30 +412,58 @@ Con auto-update, quien controle el canal de releases ejecuta código en todas la
 - **Auditoría local**: conexiones, desconexiones, huellas aceptadas y subidas quedan registradas en
   `audit.json` (últimos 2000 eventos), visible en el log local de la app.
 
+### Advertencia sobre el modo servidor
+
+El modo servidor convierte la app en un panel de administración remoto. Cualquiera que tenga el token y
+acceso de red puede **abrir sesiones SSH, leer y escribir archivos del host donde corre el servicio y
+subir cambios a tus servidores**. Por eso:
+
+- Escucha en `127.0.0.1` por defecto. Expón `0.0.0.0` solo en una LAN de confianza o detrás de VPN.
+- No lo publiques directamente en Internet por HTTP. Usa `--tls-cert`/`--tls-key` o un reverse proxy
+  TLS, un token largo y un firewall.
+- Trata `<data-dir>` como material sensible: contiene la llave de los secretos y el token.
+- Rota el token si se filtra y revisa los intentos fallidos en el journal del servicio.
+
 ## Estructura
 
 ```
 src/
-  main/            proceso principal de Electron
+  main/            host de escritorio Electron + núcleo compartido
     index.ts       ventana, ciclo de vida y endurecimiento
-    ipc.ts         superficie IPC con validación
-    updater.ts     auto-actualización (electron-updater)
+    ipc.ts         adaptador IPC de Electron (diálogos nativos incluidos)
+    services.ts    dispatcher único de operaciones (IPC y HTTP/WebSocket)
+    secret.ts      codec de secretos del escritorio (safeStorage)
+    updater.ts     auto-actualización de escritorio (electron-updater)
     store.ts       perfiles, secretos cifrados, known_hosts y auditoría
     validate.ts    validadores de entrada
     ssh/
       manager.ts   pool de sesiones, canales, host key y 2FA
       sftp.ts      operaciones SFTP, walk recursivo y escritura atómica
       compare.ts   comparación de directorios y lectura de pares de archivos
-  preload/         puente seguro (contextBridge) hacia el renderer
-  renderer/        interfaz React
-    src/lib/       motor de diff (Myers) y construcción del merge
-    src/components Sidebar, Terminal, Comparar, Diff y panel de actualizaciones
-  shared/          tipos y contrato de la API
-tools/difftest.ts  pruebas del motor de diff
+  server/          modo servidor web headless
+    cli.ts         binario npm (ssh-sftp-manager)
+    args.ts        opciones y variables de entorno
+    index.ts       HTTP, WebSocket, sesiones, estáticos y RPC
+    auth.ts        token, cookie HMAC, Origin y rate limit
+    paths.ts       token persistente y cifrado AES-256-GCM
+    open.ts        apertura del navegador
+src/preload/       puente seguro (contextBridge) hacia el renderer
+src/renderer/      interfaz React compartida
+  src/lib/         motor de diff, merge y cliente WebSocket del modo servidor
+  src/components   Sidebar, Terminal, Comparar, Diff, explorador de rutas y actualizaciones
+src/shared/        tipos y contrato de la API
+tools/             pruebas de diff, recorrido, árbol y servidor
+scripts/install.sh instalador de curl
+vite.web.config.ts build del renderer para el servidor
+.github/workflows/ci.yml  tipos, pruebas y builds en cada PR
 ```
 
 ## Decisiones de diseño
 
+- **Un solo núcleo, dos transportes**: toda la lógica sensible vive en `src/main/services.ts` y no
+  importa Electron. El escritorio la expone por IPC y el servidor por HTTP/WebSocket.
+- **Un solo paquete npm**: el binario arranca un servidor que sirve el mismo renderer React compilado.
+  No hay dos interfaces que mantener.
 - **Sin editor embebido**: el diff se dibuja a medida (dos columnas alineadas, resaltado y selección por
   bloque) en lugar de arrastrar Monaco/CodeMirror. Menos memoria y arranque más rápido.
 - **Sin SQLite nativo**: los metadatos van en JSON atómico; solo los secretos se cifran. Evita módulos
@@ -195,6 +480,8 @@ tools/difftest.ts  pruebas del motor de diff
   de carpetas**, con `*` y `?` como comodines; un patrón sin `/` compara contra el nombre y con `/` contra
   la ruta relativa. El número de carpetas y archivos ignorados se muestra en la lista.
 - **SFTP no notifica cambios**: el árbol se refresca al comparar o al subir; no hay vigilancia remota.
+- **WebSocket para el navegador**: el RPC y los eventos (terminal, progreso, prompts de host key y 2FA)
+  viajan por una sola conexión bidireccional; la terminal no sufre la latencia de un POST por tecla.
 
 ## Límites conocidos
 
@@ -212,3 +499,13 @@ tools/difftest.ts  pruebas del motor de diff
   Ajustar las exclusiones es la forma más rápida de bajar el conteo.
 - El bastión comparte el secreto guardado del servidor.
 - Los archivos que existen solo en el servidor se listan, pero no tienen versión local para comparar.
+- En el modo web, "local" significa **el disco del equipo que ejecuta el servicio**, no el del navegador.
+  Para desplegar desde tu portátil, ejecuta el modo servidor en tu portátil o monta el proyecto en el
+  host del servicio.
+- La terminal del modo web no conserva scrollback en el servidor: al recargar la página se pierde el
+  historial visible (la sesión SSH sigue abierta). Varias pestañas comparten la misma sesión.
+- Si se corta la conexión WebSocket durante una comparación, la petición se rechaza y el resultado no se
+  entrega; vuelve a comparar cuando la conexión se restablezca.
+- El modo servidor está pensado para un operador; no hay cuentas ni permisos por usuario. El token es
+  único.
+- La CSP y la validación de `Origin` asumen que el reverse proxy conserva el `Host`.

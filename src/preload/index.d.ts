@@ -2,7 +2,8 @@ import type { AppApi } from '../shared/api'
 
 declare global {
   interface Window {
-    api: AppApi
+    /** Solo existe cuando la ventana corre dentro de Electron. */
+    api?: AppApi
   }
 }
 

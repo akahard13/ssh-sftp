@@ -1,6 +1,8 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
-import { registerIpc, bootstrapStore, shutdown } from './ipc'
+import { registerIpc } from './ipc'
+import { electronSecretCodec } from './secret'
+import { disposeServices, initServices } from './services'
 import { registerUpdaterIpc } from './updater'
 
 const RENDERER_DEV_URL = process.env.ELECTRON_RENDERER_URL
@@ -69,7 +71,15 @@ if (!gotLock) {
   })
 
   app.whenReady().then(async () => {
-    await bootstrapStore()
+    await initServices({
+      dataDir: join(app.getPath('userData'), 'data'),
+      secrets: electronSecretCodec,
+      emitter: (channel, payload) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          window.webContents.send(channel, payload)
+        }
+      }
+    })
     registerIpc(() => mainWindow)
     registerUpdaterIpc(() => mainWindow)
     mainWindow = createWindow()
@@ -84,6 +94,6 @@ if (!gotLock) {
   })
 
   app.on('before-quit', () => {
-    shutdown()
+    void disposeServices()
   })
 }

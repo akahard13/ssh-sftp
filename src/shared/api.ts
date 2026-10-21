@@ -1,12 +1,14 @@
 import type {
   AuthChallenge,
   AuditEvent,
+  ClientPlatform,
   CompareDefaults,
   CompareProgress,
   CompareResult,
   ConnectionStatus,
   FilePair,
   HostKeyPrompt,
+  LocalDirListing,
   OpenTerminalResult,
   RemoteDir,
   ServerInput,
@@ -21,6 +23,8 @@ import type {
 type Unsubscribe = () => void
 
 export interface AppApi {
+  /** Permite a la UI adaptar los selectores de archivos al host. */
+  readonly platform: ClientPlatform
   servers: {
     list(): Promise<ServerProfile[]>
     save(input: ServerInput): Promise<ServerProfile>
@@ -57,6 +61,8 @@ export interface AppApi {
   local: {
     pickDirectory(): Promise<string | null>
     pickFile(): Promise<string | null>
+    /** Explora el sistema de archivos del equipo que ejecuta el servicio. */
+    listDirectories(path: string | null): Promise<LocalDirListing>
   }
   remote: {
     listDirectories(serverId: string, path: string): Promise<RemoteDir[]>

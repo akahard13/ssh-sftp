@@ -8,8 +8,9 @@ import type {
   ConnectionStatus,
   FilePair,
   HostKeyPrompt,
+  LocalDirListing,
   OpenTerminalResult,
-  RemoteDir,
+  RemoteDir,
   ServerInput,
   ServerProfile,
   TerminalDataEvent,
@@ -28,6 +29,7 @@ function subscribe<T>(channel: string, handler: (payload: T) => void): () => voi
 }
 
 const api: AppApi = {
+  platform: 'desktop',
   servers: {
     list: (): Promise<ServerProfile[]> => ipcRenderer.invoke('servers:list'),
     save: (input: ServerInput): Promise<ServerProfile> => ipcRenderer.invoke('servers:save', input),
@@ -73,7 +75,9 @@ const api: AppApi = {
   },
   local: {
     pickDirectory: (): Promise<string | null> => ipcRenderer.invoke('local:pick-dir'),
-    pickFile: (): Promise<string | null> => ipcRenderer.invoke('local:pick-file')
+    pickFile: (): Promise<string | null> => ipcRenderer.invoke('local:pick-file'),
+    listDirectories: (path: string | null): Promise<LocalDirListing> =>
+      ipcRenderer.invoke('local:list-dirs', path)
   },
   remote: {
     listDirectories: (serverId: string, path: string): Promise<RemoteDir[]> =>

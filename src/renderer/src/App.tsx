@@ -6,6 +6,7 @@ import type {
   HostKeyPrompt,
   ServerProfile
 } from '../../shared/types'
+import { api } from './lib/api'
 import CompareView from './components/CompareView'
 import Modal from './components/Modal'
 import ServerDialog from './components/ServerDialog'
@@ -29,7 +30,7 @@ export default function App(): JSX.Element {
 
   const refresh = useCallback(async () => {
     try {
-      const list = await window.api.servers.list()
+      const list = await api.servers.list()
       setServers(list)
       setActiveId((current) => current ?? list[0]?.id ?? null)
     } catch (err) {
@@ -39,11 +40,11 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     void refresh()
-    const offStatus = window.api.connection.onStatus((status) => {
+    const offStatus = api.connection.onStatus((status) => {
       setStatuses((prev) => ({ ...prev, [status.serverId]: status }))
     })
-    const offHostKey = window.api.connection.onHostKey((prompt) => setHostKey(prompt))
-    const offAuth = window.api.connection.onAuthChallenge((incoming) => {
+    const offHostKey = api.connection.onHostKey((prompt) => setHostKey(prompt))
+    const offAuth = api.connection.onAuthChallenge((incoming) => {
       setChallenge(incoming)
       setAnswer('')
     })
@@ -65,7 +66,7 @@ export default function App(): JSX.Element {
   const connect = async (id: string): Promise<void> => {
     setBanner(null)
     try {
-      await window.api.connection.connect(id)
+      await api.connection.connect(id)
     } catch (err) {
       notify(err, 'No se pudo conectar.')
     }
@@ -74,7 +75,7 @@ export default function App(): JSX.Element {
   const disconnect = async (id: string): Promise<void> => {
     setBanner(null)
     try {
-      await window.api.connection.disconnect(id)
+      await api.connection.disconnect(id)
     } catch (err) {
       notify(err, 'No se pudo desconectar.')
     }
@@ -96,7 +97,7 @@ export default function App(): JSX.Element {
     }
     setBanner(null)
     try {
-      await window.api.servers.remove(profile.id)
+      await api.servers.remove(profile.id)
       if (activeId === profile.id) setActiveId(null)
       await refresh()
     } catch (err) {
@@ -225,7 +226,7 @@ export default function App(): JSX.Element {
                   const prompt = hostKey
                   setHostKey(null)
                   try {
-                    await window.api.hostKey.trust(
+                    await api.hostKey.trust(
                       prompt.serverId,
                       prompt.fingerprint,
                       prompt.algorithm,
@@ -286,7 +287,7 @@ export default function App(): JSX.Element {
                   const current = challenge
                   setChallenge(null)
                   try {
-                    await window.api.connection.respondAuth(current.challengeId, answer)
+                    await api.connection.respondAuth(current.challengeId, answer)
                   } catch (err) {
                     notify(err, 'No se pudo enviar la respuesta.')
                   }
@@ -308,7 +309,9 @@ export default function App(): JSX.Element {
               if (e.key === 'Enter') {
                 const current = challenge
                 setChallenge(null)
-                void window.api.connection.respondAuth(current.challengeId, answer)
+                void api.connection
+                  .respondAuth(current.challengeId, answer)
+                  .catch((err: unknown) => notify(err, 'No se pudo enviar la respuesta.'))
               }
             }}
           />

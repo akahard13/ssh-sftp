@@ -963,6 +963,11 @@ select:focus {
   background: var(--panel-2);
 }
 
+.dir-row.selected {
+  background: var(--panel-2);
+  outline: 1px solid var(--accent);
+}
+
 .fingerprint {
   display: grid;
   grid-template-columns: 90px 1fr;
@@ -987,4 +992,88 @@ select:focus {
   padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid var(--border);
+}
+
+
+/* ---------- Pantallas pequeñas (tablet/móvil) ---------- */
+
+@media (max-width: 860px) {
+  .app {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex: 0 0 auto;
+    max-height: 40vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .server-list {
+    max-height: 22vh;
+  }
+
+  .content {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .topbar-title {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  .tabs {
+    margin-left: 0;
+  }
+
+  .compare-body {
+    flex-direction: column;
+  }
+
+  .file-list {
+    width: 100%;
+    flex: 0 0 auto;
+    max-height: 34vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .diff-area {
+    min-height: 46vh;
+  }
+
+  .field {
+    min-width: 100%;
+  }
+}
+
+
+@media (max-width: 860px) {
+  .modal-backdrop {
+    padding: 12px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .span-2 {
+    grid-column: auto;
+  }
+
+  .diff-scroll {
+    overflow-x: auto;
+  }
+
+  .diff-columns,
+  .diff-row {
+    min-width: 640px;
+  }
 }
