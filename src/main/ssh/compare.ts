@@ -1,86 +1,101 @@
-import { createReadStream } from 'node:fs'
+import { statSync } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
-import { join} from 'node:path'
+import { join, posix } from 'node:path'
 import type { SFTPWrapper } from 'ssh2'
 import type { CompareEntry, CompareResult, CompareStatus, FilePair } from '../../shared/types'
-import { LIMITS, remoteReadFile, remoteStat, walkRemote } from './sftp'
+import {
+  DEFAULT_EXCLUDED_DIRS,
+  LIMITS,
+  remoteReadFile,
+  remoteStat,
+  walkRemote,
+  walkTree,
+  type WalkedItem
+} from './sftp'
 
-interface LocalWalkEntry {
-  relPath: string
-  size: number
+/** Diferencia tolerada entre la fecha remota (segundos) y la local, en milisegundos. */
+const MTIME_TOLERANCE_MS = 2000
+
+export interface CompareWalkHooks {
+  shouldCancel: () => boolean
+  onProgress: (
+    phase: 'walking-remote' | 'walking-local',
+    delta: { dirs: number; entries: number }
+  ) => void
 }
 
-async function walkLocal(root: string): Promise<{ entries: LocalWalkEntry[]; truncated: boolean }> {
-  const entries: LocalWalkEntry[] = []
-  const queue: { abs: string; rel: string }[] = [{ abs: root, rel: '' }]
-  let truncated = false
-
-  while (queue.length > 0) {
-    const current = queue.shift()
-    if (!current) break
-    let list
-    try {
-      list = await readdir(current.abs, { withFileTypes: true })
-    } catch {
+async function listLocalDir(abs: string): Promise<WalkedItem[]> {
+  const dirents = await readdir(abs, { withFileTypes: true })
+  const items: WalkedItem[] = []
+  for (const dirent of dirents) {
+    if (dirent.isDirectory()) {
+      items.push({ name: dirent.name, isDirectory: true, size: 0, mtime: 0 })
       continue
     }
-    for (const item of list) {
-      const rel = current.rel ? `${current.rel}/${item.name}` : item.name
-      const abs = join(current.abs, item.name)
-      if (item.isDirectory()) {
-        queue.push({ abs, rel })
-        continue
-      }
-      if (!item.isFile()) continue
-      if (entries.length >= LIMITS.maxScanEntries) {
-        truncated = true
-        queue.length = 0
-        break
-      }
-      try {
-        const info = await stat(abs)
-        entries.push({ relPath: rel, size: info.size })
-      } catch {
-        /* unreadable file, skip */
-      }
+    if (!dirent.isFile()) continue
+    try {
+      const info = statSync(join(abs, dirent.name))
+      items.push({ name: dirent.name, isDirectory: false, size: info.size, mtime: info.mtimeMs })
+    } catch {
+      /* archivo ilegible, se omite */
     }
   }
-  return { entries, truncated }
+  return items
 }
 
 export function hashBuffer(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex')
 }
 
-function hashLocalFile(path: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const hash = createHash('sha256')
-    createReadStream(path)
-      .on('data', (chunk) => hash.update(chunk))
-      .on('error', reject)
-      .on('end', () => resolve(hash.digest('hex')))
-  })
-}
-
-async function hashRemoteFile(sftp: SFTPWrapper, path: string): Promise<string | null> {
-  try {
-    return hashBuffer(await remoteReadFile(sftp, path))
-  } catch {
-    return null
-  }
-}
-
 function localPathOf(root: string, relPath: string): string {
   return join(root, ...relPath.split('/'))
 }
 
+function classify(
+  remoteSize: number,
+  remoteMtime: number,
+  localSize: number,
+  localMtime: number
+): CompareStatus {
+  if (remoteSize !== localSize) return 'modified'
+  if (remoteMtime > 0 && localMtime > 0 && Math.abs(remoteMtime - localMtime) <= MTIME_TOLERANCE_MS) {
+    return 'identical'
+  }
+  return 'same-size'
+}
+
+/**
+ * Compara los dos árboles usando solo tamaño y fecha: no descarga ningún archivo.
+ * El contenido se compara únicamente al abrir un archivo (ver `readPair`).
+ * Devuelve null si el usuario cancela.
+ */
 export async function compareDirectories(
   sftp: SFTPWrapper,
   remoteRoot: string,
-  localRoot: string
-): Promise<CompareResult> {
-  const [remote, local] = await Promise.all([walkRemote(sftp, remoteRoot), walkLocal(localRoot)])
+  localRoot: string,
+  hooks: CompareWalkHooks
+): Promise<CompareResult | null> {
+  const excluded = DEFAULT_EXCLUDED_DIRS
+
+  const remote = await walkRemote(remoteRoot, sftp, {
+    join: posix.join,
+    excluded,
+    shouldCancel: hooks.shouldCancel,
+    onProgress: (delta) =>
+      hooks.onProgress('walking-remote', { dirs: delta.dirs ?? 0, entries: delta.entries ?? 0 })
+  })
+  if (hooks.shouldCancel()) return null
+
+  const local = await walkTree(localRoot, listLocalDir, {
+    join,
+    excluded,
+    shouldCancel: hooks.shouldCancel,
+    onProgress: (delta) =>
+      hooks.onProgress('walking-local', { dirs: delta.dirs ?? 0, entries: delta.entries ?? 0 })
+  })
+  if (hooks.shouldCancel()) return null
+
   const remoteMap = new Map(remote.entries.map((e) => [e.relPath, e]))
   const localMap = new Map(local.entries.map((e) => [e.relPath, e]))
   const allPaths = new Set<string>([...remoteMap.keys(), ...localMap.keys()])
@@ -111,22 +126,9 @@ export async function compareDirectories(
       continue
     }
 
-    let status: CompareStatus = 'modified'
-    if (remoteEntry.size === localEntry.size) {
-      if (remoteEntry.size <= LIMITS.maxHashBytes) {
-        const [remoteHash, localHash] = await Promise.all([
-          hashRemoteFile(sftp, `${remoteRoot}/${relPath}`),
-          hashLocalFile(localPathOf(localRoot, relPath)).catch(() => null)
-        ])
-        status = remoteHash && localHash && remoteHash === localHash ? 'identical' : 'modified'
-      } else {
-        status = 'same-size'
-      }
-    }
-
     entries.push({
       relPath,
-      status,
+      status: classify(remoteEntry.size, remoteEntry.mtime, localEntry.size, localEntry.mtime),
       isDirectory: false,
       localSize: localEntry.size,
       remoteSize: remoteEntry.size
@@ -138,7 +140,9 @@ export async function compareDirectories(
     remoteRoot,
     entries,
     scanned: remote.entries.length + local.entries.length,
-    truncated: remote.truncated || local.truncated
+    truncated: remote.truncated || local.truncated,
+    excludedDirs: remote.excludedDirs + local.excludedDirs,
+    dirsScanned: remote.dirsScanned + local.dirsScanned
   }
 }
 

@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
-import type { CompareEntry, CompareResult, FilePair, ServerProfile } from '../../../shared/types'
+import type {
+  CompareEntry,
+  CompareProgress,
+  CompareResult,
+  FilePair,
+  ServerProfile
+} from '../../../shared/types'
 import DiffView from './DiffView'
 import RemotePathBrowser from './RemotePathBrowser'
 
@@ -23,6 +29,18 @@ function formatSize(bytes: number | null): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
+function newRequestId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `req-${Math.random().toString(36).slice(2)}`
+}
+
+function progressLabel(progress: CompareProgress | null): string {
+  if (!progress) return 'Iniciando…'
+  const phase = progress.phase === 'walking-remote' ? 'Listando el servidor' : 'Listando el local'
+  return `${phase}: ${progress.dirs.toLocaleString('es')} carpetas · ${progress.entries.toLocaleString('es')} archivos`
+}
+
 export default function CompareView({ profile }: CompareViewProps): JSX.Element {
   const [localPath, setLocalPath] = useState(profile.localRoot ?? '')
   const [remotePath, setRemotePath] = useState(profile.remoteRoot ?? '/')
@@ -35,6 +53,14 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const [pair, setPair] = useState<FilePair | null>(null)
   const [pairLoading, setPairLoading] = useState(false)
   const [browserOpen, setBrowserOpen] = useState(false)
+  const [progress, setProgress] = useState<CompareProgress | null>(null)
+  const activeRequest = useRef<string | null>(null)
+
+  useEffect(() => {
+    return window.api.compare.onProgress((incoming) => {
+      if (incoming.requestId === activeRequest.current) setProgress(incoming)
+    })
+  }, [])
 
   useEffect(() => {
     setLocalPath(profile.localRoot ?? '')
@@ -52,6 +78,18 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     return result.entries.filter((entry) => entry.status !== 'identical')
   }, [result, onlyChanges])
 
+  const runCompareRequest = async (): Promise<CompareResult | null> => {
+    const requestId = newRequestId()
+    activeRequest.current = requestId
+    setProgress(null)
+    try {
+      return await window.api.compare.run(requestId, profile.id, remotePath, localPath)
+    } finally {
+      activeRequest.current = null
+      setProgress(null)
+    }
+  }
+
   const runCompare = async (): Promise<void> => {
     setError(null)
     setToast(null)
@@ -61,7 +99,11 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     }
     setBusy(true)
     try {
-      const compared = await window.api.compare.run(profile.id, remotePath, localPath)
+      const compared = await runCompareRequest()
+      if (!compared) {
+        setToast('Comparación cancelada.')
+        return
+      }
       setResult(compared)
       setPair(null)
       setActiveRel(null)
@@ -71,6 +113,11 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     } finally {
       setBusy(false)
     }
+  }
+
+  const cancelCompare = (): void => {
+    const requestId = activeRequest.current
+    if (requestId) void window.api.compare.cancel(requestId)
   }
 
   const openFile = async (entry: CompareEntry): Promise<void> => {
@@ -99,9 +146,15 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     setToast(message)
     void (async () => {
       try {
-        const compared = await window.api.compare.run(profile.id, remotePath, localPath)
+        const compared = await runCompareRequest()
+        if (!compared) return
         setResult(compared)
-        const refreshed = await window.api.files.readPair(profile.id, remotePath, localPath, activeRel ?? '')
+        const refreshed = await window.api.files.readPair(
+          profile.id,
+          remotePath,
+          localPath,
+          activeRel ?? ''
+        )
         setPair(refreshed)
       } catch {
         /* la comparación se puede repetir manualmente */
@@ -145,9 +198,18 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
             </button>
           </div>
         </label>
-        <button type="button" className="primary" onClick={() => void runCompare()} disabled={busy}>
-          {busy ? 'Comparando…' : 'Comparar'}
-        </button>
+        {busy ? (
+          <>
+            <button type="button" className="ghost" onClick={cancelCompare}>
+              Cancelar
+            </button>
+            <span className="update-message">{progressLabel(progress)}</span>
+          </>
+        ) : (
+          <button type="button" className="primary" onClick={() => void runCompare()}>
+            Comparar
+          </button>
+        )}
         <label className="checkbox small">
           <input
             type="checkbox"
@@ -167,6 +229,12 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
             <span>{result ? `${visibleEntries.length} archivo(s)` : 'Sin comparar'}</span>
             {result?.truncated ? <span className="warn">truncado</span> : null}
           </div>
+          {result ? (
+            <p className="list-note">
+              {result.excludedDirs.toLocaleString('es')} carpetas excluidas ·{' '}
+              {result.dirsScanned.toLocaleString('es')} revisadas
+            </p>
+          ) : null}
           <ul>
             {visibleEntries.map((entry) => (
               <li key={entry.relPath}>

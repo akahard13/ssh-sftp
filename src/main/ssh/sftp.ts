@@ -25,10 +25,145 @@ type SftpError = Error & { code?: number | string }
 
 export const LIMITS = {
   maxScanEntries: 20000,
-  maxHashBytes: 2 * 1024 * 1024,
-  maxDiffBytes: 4 * 1024 * 1024,
-  maxFileListEntries: 5000
+  maxDiffBytes: 4 * 1024 * 1024
 } as const
+
+/** Carpetas que no tiene sentido comparar en un despliegue (pesadas o generadas). */
+export const DEFAULT_EXCLUDED_DIRS: ReadonlySet<string> = new Set([
+  'node_modules',
+  'vendor',
+  'bower_components',
+  '.git',
+  '.svn',
+  '.hg',
+  'storage',
+  'dist',
+  'build',
+  'out',
+  'target',
+  '.next',
+  '.nuxt',
+  '__pycache__',
+  '.venv',
+  'venv',
+  '.cache'
+])
+
+export interface WalkedItem {
+  name: string
+  isDirectory: boolean
+  size: number
+  mtime: number
+}
+
+export interface WalkOptions {
+  /** Une un directorio padre con el nombre del hijo usando el separador correcto. */
+  join: (parent: string, name: string) => string
+  excluded: ReadonlySet<string>
+  shouldCancel: () => boolean
+  onProgress: (delta: { dirs?: number; entries?: number }) => void
+}
+
+export interface WalkOutput {
+  entries: RemoteWalkEntry[]
+  truncated: boolean
+  excludedDirs: number
+  dirsScanned: number
+}
+
+const WALK_CONCURRENCY = 12
+
+/**
+ * Recorre un árbol de directorios con concurrencia limitada. En serie, cada
+ * carpeta cuesta una ida y vuelta al servidor, y eso hace inviable un árbol grande.
+ */
+export async function walkTree(
+  root: string,
+  list: (abs: string) => Promise<WalkedItem[]>,
+  options: WalkOptions
+): Promise<WalkOutput> {
+  const entries: RemoteWalkEntry[] = []
+  const queue: { abs: string; rel: string }[] = [{ abs: root, rel: '' }]
+  let truncated = false
+  let excludedDirs = 0
+  let dirsScanned = 0
+  let inFlight = 0
+
+  const yieldToLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      if (options.shouldCancel()) {
+        queue.length = 0
+        return
+      }
+      const current = queue.shift()
+      if (!current) {
+        // La cola puede estar vacía solo un instante: mientras haya carpetas en vuelo,
+        // este worker debe esperar en vez de salir (si sale, el recorrido queda en serie).
+        if (inFlight === 0) return
+        await yieldToLoop()
+        continue
+      }
+
+      dirsScanned++
+      options.onProgress({ dirs: 1 })
+
+      inFlight++
+      let items: WalkedItem[]
+      try {
+        items = await list(current.abs)
+      } catch {
+        items = []
+      } finally {
+        inFlight--
+      }
+
+      for (const item of items) {
+        if (entries.length >= LIMITS.maxScanEntries) {
+          truncated = true
+          queue.length = 0
+          return
+        }
+        const rel = current.rel ? `${current.rel}/${item.name}` : item.name
+        if (item.isDirectory) {
+          if (options.excluded.has(item.name)) {
+            excludedDirs++
+            continue
+          }
+          queue.push({ abs: options.join(current.abs, item.name), rel })
+          continue
+        }
+        entries.push({ relPath: rel, size: item.size, mtime: item.mtime })
+        options.onProgress({ entries: 1 })
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: WALK_CONCURRENCY }, () => worker()))
+  return { entries, truncated, excludedDirs, dirsScanned }
+}
+
+async function listRemoteDir(abs: string, sftp: SFTPWrapper): Promise<WalkedItem[]> {
+  const list = await remoteReaddir(sftp, abs)
+  const items: WalkedItem[] = []
+  for (const item of list) {
+    if (item.filename === '.' || item.filename === '..') continue
+    // No se siguen enlaces simbólicos a directorios: evitan ciclos (p. ej. public/storage).
+    if (item.attrs.isSymbolicLink() && item.attrs.isDirectory()) continue
+    items.push({
+      name: item.filename,
+      isDirectory: item.attrs.isDirectory() && !item.attrs.isSymbolicLink(),
+      size: item.attrs.size,
+      mtime: item.attrs.mtime * 1000
+    })
+  }
+  return items
+}
+
+export function walkRemote(root: string, sftp: SFTPWrapper, options: WalkOptions): Promise<WalkOutput> {
+  return walkTree(root, (abs) => listRemoteDir(abs, sftp), options)
+}
 
 export function remoteStat(sftp: SFTPWrapper, path: string): Promise<RemoteStats | null> {
   return new Promise((resolve, reject) => {
@@ -176,42 +311,6 @@ export async function listRemoteDirectories(sftp: SFTPWrapper, path: string): Pr
       isDirectory: true
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
-}
-
-export async function walkRemote(
-  sftp: SFTPWrapper,
-  root: string
-): Promise<{ entries: RemoteWalkEntry[]; truncated: boolean }> {
-  const entries: RemoteWalkEntry[] = []
-  const queue: { abs: string; rel: string }[] = [{ abs: root, rel: '' }]
-  let truncated = false
-
-  while (queue.length > 0) {
-    const current = queue.shift()
-    if (!current) break
-    let list
-    try {
-      list = await remoteReaddir(sftp, current.abs)
-    } catch {
-      continue
-    }
-    for (const item of list) {
-      if (item.filename === '.' || item.filename === '..') continue
-      const rel = current.rel ? `${current.rel}/${item.filename}` : item.filename
-      const abs = posix.join(current.abs, item.filename)
-      if (item.attrs.isDirectory()) {
-        queue.push({ abs, rel })
-        continue
-      }
-      if (entries.length >= LIMITS.maxScanEntries) {
-        truncated = true
-        queue.length = 0
-        break
-      }
-      entries.push({ relPath: rel, size: item.attrs.size, mtime: item.attrs.mtime })
-    }
-  }
-  return { entries, truncated }
 }
 
 /** Writes to a temp file in the same directory, then swaps it in. */

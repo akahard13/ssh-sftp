@@ -40,6 +40,9 @@ import {
 const AUTH_METHODS = ['password', 'key', 'agent'] as const
 const MAX_UPLOAD_BYTES = 32 * 1024 * 1024
 
+/** Comparaciones en curso que el usuario pidió cancelar. */
+const cancelledCompares = new Set<string>()
+
 function parseJumpHost(value: unknown): ServerInput['jumpHost'] {
   if (value === null || value === undefined) return null
   const raw = asObject(value, 'jumpHost')
@@ -207,15 +210,52 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     return listRemoteDirectories(sftp, target)
   })
 
-  ipcMain.handle('compare:run', async (_e, serverId: unknown, remoteRoot: unknown, localRoot: unknown) => {
-    const profile = requireProfile(serverId)
-    const remote = asAbsoluteRemotePath(remoteRoot, 'remoteRoot')
-    const local = asString(localRoot, 'localRoot', { max: 2048 })
-    assertRemoteAllowed(profile, remote)
-    const localInfo = await stat(local).catch(() => null)
-    if (!localInfo?.isDirectory()) throw new ValidationError('El directorio local no existe.')
-    const sftp = await getSftp(profile.id)
-    return compareDirectories(sftp, remote, local)
+  ipcMain.handle(
+    'compare:run',
+    async (_e, requestId: unknown, serverId: unknown, remoteRoot: unknown, localRoot: unknown) => {
+      const request = asString(requestId, 'requestId', { max: 64 })
+      const profile = requireProfile(serverId)
+      const remote = asAbsoluteRemotePath(remoteRoot, 'remoteRoot')
+      const local = asString(localRoot, 'localRoot', { max: 2048 })
+      assertRemoteAllowed(profile, remote)
+      const localInfo = await stat(local).catch(() => null)
+      if (!localInfo?.isDirectory()) throw new ValidationError('El directorio local no existe.')
+      const sftp = await getSftp(profile.id)
+      cancelledCompares.delete(request)
+
+      const counters = { dirs: 0, entries: 0 }
+      let lastEmit = 0
+      const report = (
+        phase: 'walking-remote' | 'walking-local',
+        delta: { dirs: number; entries: number }
+      ): void => {
+        counters.dirs += delta.dirs
+        counters.entries += delta.entries
+        const now = Date.now()
+        if (now - lastEmit < 200) return
+        lastEmit = now
+        getWindow()?.webContents.send('evt:compare-progress', {
+          requestId: request,
+          phase,
+          dirs: counters.dirs,
+          entries: counters.entries
+        })
+      }
+
+      try {
+        return await compareDirectories(sftp, remote, local, {
+          shouldCancel: () => cancelledCompares.has(request),
+          onProgress: report
+        })
+      } finally {
+        cancelledCompares.delete(request)
+      }
+    }
+  )
+
+  ipcMain.handle('compare:cancel', (_e, requestId: unknown) => {
+    cancelledCompares.add(asString(requestId, 'requestId', { max: 64 }))
+    return true
   })
 
   ipcMain.handle(

@@ -1,6 +1,7 @@
 import type {
   AuthChallenge,
   AuditEvent,
+  CompareProgress,
   CompareResult,
   ConnectionStatus,
   FilePair,
@@ -60,7 +61,14 @@ export interface AppApi {
     listDirectories(serverId: string, path: string): Promise<RemoteDir[]>
   }
   compare: {
-    run(serverId: string, remoteRoot: string, localRoot: string): Promise<CompareResult>
+    run(
+      requestId: string,
+      serverId: string,
+      remoteRoot: string,
+      localRoot: string
+    ): Promise<CompareResult | null>
+    cancel(requestId: string): Promise<boolean>
+    onProgress(handler: (progress: CompareProgress) => void): Unsubscribe
   }
   files: {
     readPair(

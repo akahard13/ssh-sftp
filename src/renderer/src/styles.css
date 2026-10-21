@@ -560,6 +560,14 @@ select:focus {
   padding: 4px;
 }
 
+.list-note {
+  margin: 0;
+  padding: 4px 12px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
 .file-row {
   display: flex;
   align-items: center;

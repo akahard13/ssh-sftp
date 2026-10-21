@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { AppApi } from '../shared/api'
 import type {
   AuthChallenge,
+  CompareProgress,
   CompareResult,
   ConnectionStatus,
   FilePair,
@@ -78,8 +79,16 @@ const api: AppApi = {
       ipcRenderer.invoke('remote:list-dirs', serverId, path)
   },
   compare: {
-    run: (serverId: string, remoteRoot: string, localRoot: string): Promise<CompareResult> =>
-      ipcRenderer.invoke('compare:run', serverId, remoteRoot, localRoot)
+    run: (
+      requestId: string,
+      serverId: string,
+      remoteRoot: string,
+      localRoot: string
+    ): Promise<CompareResult | null> =>
+      ipcRenderer.invoke('compare:run', requestId, serverId, remoteRoot, localRoot),
+    cancel: (requestId: string): Promise<boolean> => ipcRenderer.invoke('compare:cancel', requestId),
+    onProgress: (handler: (progress: CompareProgress) => void): (() => void) =>
+      subscribe('evt:compare-progress', handler)
   },
   files: {
     readPair: (

@@ -1,6 +1,6 @@
 {
   "name": "ssh-sftp-manager",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Gestor de multiples sesiones SSH con comparador y despliegue selectivo por SFTP",
   "main": "./out/main/index.js",
   "author": "",
@@ -12,6 +12,8 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test:diff": "esbuild tools/difftest.ts --bundle --platform=node --format=cjs --outfile=tools/difftest.cjs --log-level=warning && node tools/difftest.cjs",
+    "test:walk": "esbuild tools/walktest.ts --bundle --platform=node --format=cjs --outfile=tools/walktest.cjs --log-level=warning && node tools/walktest.cjs",
+    "test": "npm run test:diff && npm run test:walk",
     "package": "electron-vite build && electron-builder",
     "package:dir": "electron-vite build && electron-builder --dir",
     "release": "electron-vite build && electron-builder --publish always"

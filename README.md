@@ -31,7 +31,7 @@ node node_modules/electron/install.js
 | `npm run dev` | Compila main/preload y lanza la app con Vite en modo desarrollo |
 | `npm run build` | Compila `out/` para producción |
 | `npm run typecheck` | Verifica tipos de los proyectos Node y Web |
-| `npm run test:diff` | Pruebas del motor de diff/merge (incluye fuzzing) |
+| `npm test` | Pruebas del motor de diff/merge y del recorrido de directorios |
 | `npm run package` | Genera el **instalador NSIS** en `dist/` (necesario para auto-update) |
 | `npm run package:dir` | Genera solo la carpeta portable `dist/win-unpacked` (sin instalador) |
 | `npm run release` | Igual que `package` y además publica el release en GitHub (requiere `GH_TOKEN`) |
@@ -171,6 +171,13 @@ tools/difftest.ts  pruebas del motor de diff
   nativos que requieren recompilarse contra Electron.
 - **Sin escrituras parciales in-place**: para subir "solo los cambios" se reconstruye el contenido final
   y se reemplaza el archivo de forma atómica. Es más seguro que parchear rangos.
+- **El escaneo no descarga archivos**: la comparación de directorios usa tamaño y fecha de modificación,
+  y solo se lee el contenido cuando abres un archivo. Antes descargaba cada archivo de igual tamaño para
+  calcular su hash, lo que hacía inviable un proyecto con miles de archivos.
+- **Recorrido en paralelo**: el listado de carpetas con concurrencia limitada (12 a la vez) en lugar de
+  una petición por carpeta en serie, que dominaba el tiempo total.
+- **Exclusiones por defecto**: `node_modules`, `vendor`, `.git`, `storage`, `dist`, `build` y similares
+  se omiten en ambos lados, y el número de carpetas omitidas se muestra en la lista.
 - **SFTP no notifica cambios**: el árbol se refresca al comparar o al subir; no hay vigilancia remota.
 
 ## Límites conocidos
@@ -180,6 +187,10 @@ tools/difftest.ts  pruebas del motor de diff
 - No hay firma de código, así que SmartScreen avisará como editor desconocido.
 - El diff solo aplica a archivos de texto y de hasta 4 MB; los binarios o más grandes se avisan y no se
   comparan.
-- El escaneo de directorios está acotado (20 000 entradas por lado) y marca el resultado como truncado.
+- La comparación de directorios se hace por **tamaño y fecha**, no por contenido (para no descargar
+  miles de archivos). Un archivo con el mismo tamaño y fecha distinta aparece como `mismo tamaño`:
+  ábrelo y el diff te dirá si de verdad cambió. Si el tamaño difiere, es `distinto` con seguridad.
+- El escaneo está acotado (20 000 archivos por lado) y marca el resultado como truncado. Las carpetas
+  pesadas se excluyen por defecto; la lista no es configurable desde la interfaz.
 - El bastión comparte el secreto guardado del servidor.
 - Los archivos que existen solo en el servidor se listan, pero no tienen versión local para comparar.

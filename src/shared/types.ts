@@ -98,6 +98,16 @@ export interface CompareResult {
   entries: CompareEntry[]
   scanned: number
   truncated: boolean
+  /** Directorios omitidos por la lista de exclusión (node_modules, vendor, .git…). */
+  excludedDirs: number
+  dirsScanned: number
+}
+
+export interface CompareProgress {
+  requestId: string
+  phase: 'walking-remote' | 'walking-local'
+  dirs: number
+  entries: number
 }
 
 export interface FilePair {
