@@ -1,23 +1,61 @@
 {
   "name": "ssh-sftp-manager",
-  "version": "0.1.5",
-  "description": "Gestor de multiples sesiones SSH con comparador y despliegue selectivo por SFTP",
+  "version": "0.2.0",
+  "description": "Gestor de múltiples sesiones SSH con comparador y despliegue selectivo por SFTP, en escritorio o como servidor web",
+
   "main": "./out/main/index.js",
+  "bin": {
+    "ssh-sftp-manager": "out/server/cli.js",
+    "ssh-sftp": "out/server/cli.js"
+  },
+  "files": [
+    "out/server/**/*",
+    "out/web/**/*",
+    "scripts/install.sh",
+    "README.md"
+  ],
   "author": "",
   "license": "UNLICENSED",
-  "private": true,
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/akahard13/ssh-sftp.git"
+  },
+  "homepage": "https://github.com/akahard13/ssh-sftp#readme",
+  "bugs": {
+    "url": "https://github.com/akahard13/ssh-sftp/issues"
+  },
+  "keywords": [
+    "ssh",
+    "sftp",
+    "deploy",
+    "terminal",
+    "electron",
+    "self-hosted"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "postinstall": "patch-package",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "build:renderer:web": "vite build --config vite.web.config.ts",
+    "build:server": "esbuild src/server/cli.ts --bundle --platform=node --format=cjs --packages=external --outfile=out/server/cli.js --log-level=warning --banner:js=\"#!/usr/bin/env node\"",
+    "build:web": "npm run build:renderer:web && npm run build:server",
+    "server": "node out/server/cli.js",
+    "serve": "npm run build:web && node out/server/cli.js",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test:diff": "esbuild tools/difftest.ts --bundle --platform=node --format=cjs --outfile=tools/difftest.cjs --log-level=warning && node tools/difftest.cjs",
     "test:walk": "esbuild tools/walktest.ts --bundle --platform=node --format=cjs --outfile=tools/walktest.cjs --log-level=warning && node tools/walktest.cjs",
     "test:tree": "esbuild tools/treetest.ts --bundle --platform=node --format=cjs --outfile=tools/treetest.cjs --log-level=warning && node tools/treetest.cjs",
-    "test": "npm run test:diff && npm run test:walk && npm run test:tree",
+    "test:server": "esbuild tools/servertest.ts --bundle --platform=node --format=cjs --packages=external --outfile=tools/servertest.cjs --log-level=warning && node tools/servertest.cjs",
+    "test": "npm run test:diff && npm run test:walk && npm run test:tree && npm run test:server",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build:web",
     "package": "electron-vite build && electron-builder",
     "package:dir": "electron-vite build && electron-builder --dir",
+    "package:linux": "electron-vite build && electron-builder --linux",
     "release": "electron-vite build && electron-builder --publish always"
   },
   "build": {
@@ -29,7 +67,9 @@
     "files": [
       "out/**/*",
       "package.json",
-      "!**/*.map"
+      "!**/*.map",
+      "!out/web/**",
+      "!out/server/**"
     ],
     "publish": [
       {
@@ -51,6 +91,14 @@
       "createDesktopShortcut": true,
       "shortcutName": "SSH SFTP Manager",
       "artifactName": "SSH-SFTP-Manager-${version}-setup.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "artifactName": "SSH-SFTP-Manager-${version}-${arch}.${ext}"
     }
   },
   "devDependencies": {
@@ -58,6 +106,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/ssh2": "^1.15.6",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.1.2",
     "electron": "^45.0.0",
     "electron-builder": "^26.15.3",
@@ -73,6 +122,7 @@
     "electron-updater": "^6.8.9",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "ssh2": "^1.17.0"
+    "ssh2": "^1.17.0",
+    "ws": "^8.18.3"
   }
 }

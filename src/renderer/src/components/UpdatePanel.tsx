@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { UpdateState } from '../../../shared/types'
+import { api } from '../lib/api'
 
 export default function UpdatePanel(): JSX.Element {
   const [state, setState] = useState<UpdateState | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    void window.api.updates.state().then(setState)
-    return window.api.updates.onState(setState)
+    void api.updates.state().then(setState)
+    return api.updates.onState(setState)
   }, [])
 
   const status = state?.status ?? 'idle'
@@ -25,12 +26,25 @@ export default function UpdatePanel(): JSX.Element {
     <div className="update-panel">
       <div className="update-head">
         <span className="update-version">v{state?.currentVersion ?? '…'}</span>
+        {api.platform === 'web' ? (
+          <button
+            type="button"
+            className="ghost small"
+            onClick={() => {
+              void fetch('/api/logout', { method: 'POST' }).finally(() => {
+                window.location.assign('/login')
+              })
+            }}
+          >
+            Cerrar sesión
+          </button>
+        ) : null}
         {(status === 'idle' || status === 'none' || status === 'error' || status === 'unsupported') && (
           <button
             type="button"
             className="ghost small"
             disabled={busy || status === 'unsupported'}
-            onClick={() => void run(() => window.api.updates.check())}
+            onClick={() => void run(() => api.updates.check())}
           >
             Buscar actualizaciones
           </button>
@@ -45,7 +59,7 @@ export default function UpdatePanel(): JSX.Element {
             type="button"
             className="primary small"
             disabled={busy}
-            onClick={() => void run(() => window.api.updates.download())}
+            onClick={() => void run(() => api.updates.download())}
           >
             Descargar
           </button>
@@ -69,7 +83,7 @@ export default function UpdatePanel(): JSX.Element {
           <button
             type="button"
             className="primary small"
-            onClick={() => void window.api.updates.install()}
+            onClick={() => void api.updates.install()}
           >
             Reiniciar e instalar
           </button>

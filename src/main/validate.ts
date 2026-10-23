@@ -15,19 +15,26 @@ export function asObject(value: unknown, field: string): Record<string, unknown>
 export function asString(
   value: unknown,
   field: string,
-  opts: { max?: number; allowEmpty?: boolean } = {}
+  opts: { max?: number; allowEmpty?: boolean; trim?: boolean } = {}
 ): string {
   const max = opts.max ?? 4096
   if (typeof value !== 'string') throw new ValidationError(`${field} debe ser texto.`)
   if (value.length > max) throw new ValidationError(`${field} excede el largo permitido.`)
-  const trimmed = value.trim()
-  if (!opts.allowEmpty && trimmed.length === 0) throw new ValidationError(`${field} es obligatorio.`)
-  return trimmed
+  // El contenido de archivos, la entrada de terminal y los secretos no se
+  // recortan: un salto de línea final o un espacio son parte del dato.
+  const text = opts.trim === false ? value : value.trim()
+  if (!opts.allowEmpty && text.length === 0) throw new ValidationError(`${field} es obligatorio.`)
+  return text
 }
 
-export function asOptionalString(value: unknown, field: string, max = 4096): string | null {
+export function asOptionalString(
+  value: unknown,
+  field: string,
+  max = 4096,
+  opts: { trim?: boolean } = {}
+): string | null {
   if (value === null || value === undefined) return null
-  const text = asString(value, field, { max, allowEmpty: true })
+  const text = asString(value, field, { max, allowEmpty: true, trim: opts.trim })
   return text.length > 0 ? text : null
 }
 

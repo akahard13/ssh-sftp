@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { RemoteDir } from '../../../shared/types'
+import { api } from '../lib/api'
 import Modal from './Modal'
 
 interface RemotePathBrowserProps {
@@ -26,7 +27,7 @@ export default function RemotePathBrowser({
       setLoading(true)
       setError(null)
       try {
-        const list = await window.api.remote.listDirectories(serverId, target)
+        const list = await api.remote.listDirectories(serverId, target)
         setEntries(list)
         setPath(target)
       } catch (err) {

@@ -1,6 +1,7 @@
 node_modules/
 out/
 dist/
+.npm-cache/
 *.log
 .DS_Store
 .vite/

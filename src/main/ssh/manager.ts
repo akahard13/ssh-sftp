@@ -3,6 +3,7 @@ import type { ClientChannel, ConnectConfig, SFTPWrapper } from 'ssh2'
 import { readFileSync } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
 import type { Duplex } from 'node:stream'
+import { StringDecoder } from 'node:string_decoder'
 import type {
   AuthChallenge,
   AuthMethod,
@@ -160,44 +161,39 @@ function forwardOut(jump: Client, host: string, port: number): Promise<Duplex> {
   })
 }
 
-function attachKeyboardInteractive(client: Client, serverId: string): void {
+function attachKeyboardInteractive(client: Client, session: Session): void {
   client.on('keyboard-interactive', (_name, _instructions, _lang, prompts, finish) => {
-    const session = sessions.get(serverId)
+    if (sessions.get(session.serverId) !== session) return
     const challenge: AuthChallenge = {
       challengeId: randomUUID(),
-      serverId,
+      serverId: session.serverId,
       prompt: prompts[0]?.prompt ?? 'Código de verificación',
       echo: prompts[0]?.echo ?? false
     }
-    if (session) session.pendingAuth = { finish, challenge, promptCount: prompts.length }
-    setStatus(serverId, 'needs-auth', challenge.prompt)
+    session.pendingAuth = { finish, challenge, promptCount: prompts.length }
+    setStatus(session.serverId, 'needs-auth', challenge.prompt)
     emit?.['auth-challenge'](challenge)
   })
 }
 
-function hostVerifierFor(serverId: string, host: string, port: number): (key: Buffer) => boolean {
+function hostVerifierFor(session: Session, host: string, port: number): (key: Buffer) => boolean {
   return (key: Buffer): boolean => {
-    const session = sessions.get(serverId)
     const fingerprint = fingerprintOf(key)
     const algorithm = algorithmOf(key)
     const known = getKnownHost(host, port)
 
     if (!known) {
-      if (session) {
-        session.pendingHostKey = { host, port, fingerprint, algorithm, kind: 'unknown' }
-      }
+      session.pendingHostKey = { host, port, fingerprint, algorithm, kind: 'unknown' }
       return false
     }
     if (known.fingerprint !== fingerprint) {
-      if (session) {
-        session.pendingHostKey = {
-          host,
-          port,
-          fingerprint,
-          algorithm,
-          kind: 'mismatch',
-          previous: known.fingerprint
-        }
+      session.pendingHostKey = {
+        host,
+        port,
+        fingerprint,
+        algorithm,
+        kind: 'mismatch',
+        previous: known.fingerprint
       }
       return false
     }
@@ -229,7 +225,7 @@ export async function connect(serverId: string): Promise<void> {
   }
   sessions.set(serverId, session)
   setStatus(serverId, 'connecting')
-  attachKeyboardInteractive(client, serverId)
+  attachKeyboardInteractive(client, session)
 
   const secret = getSecret(serverId)
 
@@ -238,11 +234,11 @@ export async function connect(serverId: string): Promise<void> {
     if (profile.jumpHost) {
       const jumpClient = new Client()
       session.jumpClient = jumpClient
-      attachKeyboardInteractive(jumpClient, serverId)
+      attachKeyboardInteractive(jumpClient, session)
       const jumpConfig = buildConfig(
         profile.jumpHost as AuthTarget,
         secret,
-        hostVerifierFor(serverId, profile.jumpHost.host, profile.jumpHost.port)
+        hostVerifierFor(session, profile.jumpHost.host, profile.jumpHost.port)
       )
       await connectClient(jumpClient, jumpConfig)
       sock = await forwardOut(jumpClient, profile.host, profile.port)
@@ -251,11 +247,26 @@ export async function connect(serverId: string): Promise<void> {
     const config = buildConfig(
       profile as AuthTarget,
       secret,
-      hostVerifierFor(serverId, profile.host, profile.port),
+      hostVerifierFor(session, profile.host, profile.port),
       sock
     )
     await connectClient(client, config)
+    if (sessions.get(serverId) !== session) {
+      // El usuario desconectó mientras se establecía la sesión.
+      try {
+        client.end()
+      } catch {
+        /* ignore */
+      }
+      try {
+        session.jumpClient?.end()
+      } catch {
+        /* ignore */
+      }
+      return
+    }
   } catch (err) {
+    if (sessions.get(serverId) !== session) return
     const pending = session.pendingHostKey
     if (pending) {
       const prompt: HostKeyPrompt = {
@@ -290,7 +301,7 @@ export async function connect(serverId: string): Promise<void> {
   }
 
   client.on('error', (err: Error) => {
-    setStatus(serverId, 'error', err.message)
+    if (sessions.get(serverId) === session) setStatus(serverId, 'error', err.message)
   })
   client.on('close', () => {
     if (sessions.get(serverId) === session) {
@@ -298,7 +309,7 @@ export async function connect(serverId: string): Promise<void> {
     }
   })
   client.on('end', () => {
-    setStatus(serverId, 'disconnected')
+    if (sessions.get(serverId) === session) setStatus(serverId, 'disconnected')
   })
 
   session.status = 'ready'
@@ -380,6 +391,33 @@ export function getSession(serverId: string): Session | null {
   return sessions.get(serverId) ?? null
 }
 
+/** Estado actual de las sesiones; el servidor web lo reenvía al conectar un cliente. */
+export function listStatuses(): ConnectionStatus[] {
+  return [...sessions.values()].map((session) => ({ serverId: session.serverId, state: session.status }))
+}
+
+/** Prompts pendientes, para que una pestaña nueva no pierda la pregunta en curso. */
+export function listPendingPrompts(): { hostKeys: HostKeyPrompt[]; challenges: AuthChallenge[] } {
+  const hostKeys: HostKeyPrompt[] = []
+  const challenges: AuthChallenge[] = []
+  for (const session of sessions.values()) {
+    const pending = session.pendingHostKey
+    if (pending) {
+      hostKeys.push({
+        serverId: session.serverId,
+        host: pending.host,
+        port: pending.port,
+        fingerprint: pending.fingerprint,
+        algorithm: pending.algorithm,
+        kind: pending.kind,
+        previousFingerprint: pending.previous
+      })
+    }
+    if (session.pendingAuth) challenges.push(session.pendingAuth.challenge)
+  }
+  return { hostKeys, challenges }
+}
+
 export function requireReadySession(serverId: string): Session {
   const session = sessions.get(serverId)
   if (!session || session.status !== 'ready') {
@@ -424,9 +462,15 @@ export function openShell(serverId: string, cols: number, rows: number): { termi
         return
       }
       session.shells.set(terminalId, stream)
-      stream.on('data', (chunk: Buffer) => emit?.['terminal-data'](terminalId, chunk.toString('utf8')))
-      stream.stderr.on('data', (chunk: Buffer) => emit?.['terminal-data'](terminalId, chunk.toString('utf8')))
+      // Un chunk puede cortar un carácter UTF-8 a la mitad; StringDecoder lo conserva
+      // hasta el siguiente chunk para no mostrar caracteres de reemplazo en la terminal.
+      const stdout = new StringDecoder('utf8')
+      const stderr = new StringDecoder('utf8')
+      stream.on('data', (chunk: Buffer) => emit?.['terminal-data'](terminalId, stdout.write(chunk)))
+      stream.stderr.on('data', (chunk: Buffer) => emit?.['terminal-data'](terminalId, stderr.write(chunk)))
       stream.on('close', () => {
+        const rest = stdout.end() + stderr.end()
+        if (rest) emit?.['terminal-data'](terminalId, rest)
         session.shells.delete(terminalId)
         emit?.['terminal-exit'](terminalId, undefined)
       })
