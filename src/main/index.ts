@@ -1,6 +1,6 @@
 import { app, BrowserWindow, shell } from 'electron'
-import { cpSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { cpSync, existsSync, mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
 import { electronSecretCodec } from './secret'
@@ -13,17 +13,26 @@ const isDev = Boolean(RENDERER_DEV_URL)
 let mainWindow: BrowserWindow | null = null
 
 /**
- * La app se llamaba "SSH SFTP Manager": al renombrarla cambia `userData`, así
- * que se copia la carpeta anterior la primera vez para no perder perfiles.
+ * La app se llamaba "ssh-sftp-manager": al renombrarla cambia `userData`, así
+ * que se copian los datos (perfiles, secretos, known_hosts y auditoría) la
+ * primera vez para no perder nada. Se prueban el nombre del paquete antiguo y
+ * el productName, por si alguna instalación previa usó el capitalizado.
  */
+const LEGACY_USER_DATA = ['ssh-sftp-manager', 'SSH SFTP Manager']
+
 function migrateLegacyUserData(): void {
-  const current = app.getPath('userData')
-  const legacy = join(app.getPath('appData'), 'SSH SFTP Manager')
-  if (existsSync(current) || !existsSync(legacy)) return
-  try {
-    cpSync(legacy, current, { recursive: true })
-  } catch (err) {
-    console.error('No se pudo migrar los datos anteriores:', err)
+  const currentData = join(app.getPath('userData'), 'data')
+  if (existsSync(currentData)) return
+  for (const name of LEGACY_USER_DATA) {
+    const legacyData = join(app.getPath('appData'), name, 'data')
+    if (!existsSync(legacyData)) continue
+    try {
+      mkdirSync(dirname(currentData), { recursive: true })
+      cpSync(legacyData, currentData, { recursive: true })
+    } catch (err) {
+      console.error('No se pudieron migrar los datos anteriores:', err)
+    }
+    return
   }
 }
 
