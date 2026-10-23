@@ -14,20 +14,26 @@ let mainWindow: BrowserWindow | null = null
 
 /**
  * La app se llamaba "ssh-sftp-manager": al renombrarla cambia `userData`, así
- * que se copian los datos (perfiles, secretos, known_hosts y auditoría) la
- * primera vez para no perder nada. Se prueban el nombre del paquete antiguo y
- * el productName, por si alguna instalación previa usó el capitalizado.
+ * que se migran los datos (perfiles, secretos, known_hosts y auditoría) y la
+ * llave de OSCrypt la primera vez. Esa llave vive en `<userData>/Local State` y
+ * es la única que descifra los secretos de `safeStorage`; sin ella
+ * `decryptString` falla y las contraseñas guardadas se pierden. Se ejecuta
+ * antes de `app.whenReady()` para que Electron lea la llave migrada.
  */
 const LEGACY_USER_DATA = ['ssh-sftp-manager', 'SSH SFTP Manager']
 
 function migrateLegacyUserData(): void {
-  const currentData = join(app.getPath('userData'), 'data')
+  const userData = app.getPath('userData')
+  const currentData = join(userData, 'data')
   if (existsSync(currentData)) return
   for (const name of LEGACY_USER_DATA) {
-    const legacyData = join(app.getPath('appData'), name, 'data')
+    const legacyRoot = join(app.getPath('appData'), name)
+    const legacyData = join(legacyRoot, 'data')
     if (!existsSync(legacyData)) continue
     try {
       mkdirSync(dirname(currentData), { recursive: true })
+      const legacyLocalState = join(legacyRoot, 'Local State')
+      if (existsSync(legacyLocalState)) cpSync(legacyLocalState, join(userData, 'Local State'))
       cpSync(legacyData, currentData, { recursive: true })
     } catch (err) {
       console.error('No se pudieron migrar los datos anteriores:', err)
@@ -35,6 +41,8 @@ function migrateLegacyUserData(): void {
     return
   }
 }
+
+migrateLegacyUserData()
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -98,7 +106,6 @@ if (!gotLock) {
   })
 
   app.whenReady().then(async () => {
-    migrateLegacyUserData()
     await initServices({
       dataDir: join(app.getPath('userData'), 'data'),
       secrets: electronSecretCodec,
