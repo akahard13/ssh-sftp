@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { AuthMethod, ServerInput, ServerProfile } from '../../../shared/types'
+import { api } from '../lib/api'
+import LocalPathBrowser from './LocalPathBrowser'
 import Modal from './Modal'
 
 interface ServerDialogProps {
@@ -55,6 +57,8 @@ export default function ServerDialog({ profile, onClose, onSaved }: ServerDialog
   const [form, setForm] = useState<FormState>(() => initialState(profile))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [keyBrowserOpen, setKeyBrowserOpen] = useState(false)
+  const [localBrowserOpen, setLocalBrowserOpen] = useState(false)
 
   useEffect(() => {
     setForm(initialState(profile))
@@ -119,7 +123,7 @@ export default function ServerDialog({ profile, onClose, onSaved }: ServerDialog
 
     setSaving(true)
     try {
-      const saved = await window.api.servers.save(input)
+      const saved = await api.servers.save(input)
       onSaved(saved)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar el servidor.')
@@ -129,167 +133,215 @@ export default function ServerDialog({ profile, onClose, onSaved }: ServerDialog
   }
 
   return (
-    <Modal
-      title={profile ? 'Editar servidor' : 'Nuevo servidor'}
-      onClose={onClose}
-      width={640}
-      footer={
-        <>
-          <button type="button" className="ghost" onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="button" className="primary" onClick={submit} disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </button>
-        </>
-      }
-    >
-      <div className="form-grid">
-        <label>
-          Nombre
-          <input value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Producción web" />
-        </label>
-        <label>
-          Host
-          <input value={form.host} onChange={(e) => update('host', e.target.value)} placeholder="10.0.0.15" />
-        </label>
-        <label>
-          Puerto
-          <input value={form.port} onChange={(e) => update('port', e.target.value)} inputMode="numeric" />
-        </label>
-        <label>
-          Usuario
-          <input value={form.username} onChange={(e) => update('username', e.target.value)} placeholder="deploy" />
-        </label>
-        <label>
-          Autenticación
-          <select
-            value={form.authMethod}
-            onChange={(e) => update('authMethod', e.target.value as AuthMethod)}
-          >
-            <option value="key">Llave privada</option>
-            <option value="agent">ssh-agent</option>
-            <option value="password">Contraseña</option>
-          </select>
-        </label>
-        {form.authMethod === 'key' ? (
-          <label className="span-2">
-            Ruta de la llave privada
+    <>
+      <Modal
+        title={profile ? 'Editar servidor' : 'Nuevo servidor'}
+        onClose={onClose}
+        width={640}
+        footer={
+          <>
+            <button type="button" className="ghost" onClick={onClose}>
+              Cancelar
+            </button>
+            <button type="button" className="primary" onClick={submit} disabled={saving}>
+              {saving ? 'Guardando…' : 'Guardar'}
+            </button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <label>
+            Nombre
+            <input value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Producción web" />
+          </label>
+          <label>
+            Host
+            <input value={form.host} onChange={(e) => update('host', e.target.value)} placeholder="10.0.0.15" />
+          </label>
+          <label>
+            Puerto
+            <input value={form.port} onChange={(e) => update('port', e.target.value)} inputMode="numeric" />
+          </label>
+          <label>
+            Usuario
+            <input value={form.username} onChange={(e) => update('username', e.target.value)} placeholder="deploy" />
+          </label>
+          <label>
+            Autenticación
+            <select
+              value={form.authMethod}
+              onChange={(e) => update('authMethod', e.target.value as AuthMethod)}
+            >
+              <option value="key">Llave privada</option>
+              <option value="agent">ssh-agent</option>
+              <option value="password">Contraseña</option>
+            </select>
+          </label>
+          {form.authMethod === 'key' ? (
+            <label className="span-2">
+              Ruta de la llave privada
+              <div className="input-row">
+                <input
+                  value={form.privateKeyPath}
+                  onChange={(e) => update('privateKeyPath', e.target.value)}
+                  placeholder="C:\Users\tu-usuario\.ssh\id_ed25519"
+                />
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={async () => {
+                    if (api.platform === 'web') {
+                      setKeyBrowserOpen(true)
+                      return
+                    }
+                    const picked = await api.local.pickFile()
+                    if (picked) update('privateKeyPath', picked)
+                  }}
+                >
+                  Buscar…
+                </button>
+              </div>
+            </label>
+          ) : null}
+          {secretLabel ? (
+            <label className="span-2">
+              {secretLabel}
+              <div className="input-row">
+                <input
+                  type="password"
+                  value={form.secret}
+                  onChange={(e) => update('secret', e.target.value)}
+                  placeholder={form.hasSecret ? '•••••••• (guardada, escribe para reemplazar)' : ''}
+                  autoComplete="new-password"
+                />
+                {form.hasSecret ? (
+                  <button
+                    type="button"
+                    className="ghost danger"
+                    onClick={() => {
+                      update('clearSecret', true)
+                      update('hasSecret', false)
+                    }}
+                  >
+                    Borrar guardada
+                  </button>
+                ) : null}
+              </div>
+              {form.clearSecret ? <span className="hint">Se eliminará el secreto guardado.</span> : null}
+            </label>
+          ) : null}
+          <label>
+            Directorio remoto base
+            <input
+              value={form.remoteRoot}
+              onChange={(e) => update('remoteRoot', e.target.value)}
+              placeholder="/var/www/app"
+            />
+          </label>
+          <label>
+            Directorio local base
             <div className="input-row">
               <input
-                value={form.privateKeyPath}
-                onChange={(e) => update('privateKeyPath', e.target.value)}
-                placeholder="C:\Users\tu-usuario\.ssh\id_ed25519"
+                value={form.localRoot}
+                onChange={(e) => update('localRoot', e.target.value)}
+                placeholder="C:\proyectos\app"
               />
               <button
                 type="button"
                 className="ghost"
                 onClick={async () => {
-                  const picked = await window.api.local.pickFile()
-                  if (picked) update('privateKeyPath', picked)
+                  if (api.platform === 'web') {
+                    setLocalBrowserOpen(true)
+                    return
+                  }
+                  const picked = await api.local.pickDirectory()
+                  if (picked) update('localRoot', picked)
                 }}
               >
-                Buscar…
+                {api.platform === 'web' ? 'Explorar…' : 'Elegir…'}
               </button>
             </div>
           </label>
-        ) : null}
-        {secretLabel ? (
-          <label className="span-2">
-            {secretLabel}
-            <div className="input-row">
-              <input
-                type="password"
-                value={form.secret}
-                onChange={(e) => update('secret', e.target.value)}
-                placeholder={form.hasSecret ? '•••••••• (guardada, escribe para reemplazar)' : ''}
-                autoComplete="new-password"
-              />
-              {form.hasSecret ? (
-                <button
-                  type="button"
-                  className="ghost danger"
-                  onClick={() => {
-                    update('clearSecret', true)
-                    update('hasSecret', false)
-                  }}
-                >
-                  Borrar guardada
-                </button>
-              ) : null}
-            </div>
-            {form.clearSecret ? <span className="hint">Se eliminará el secreto guardado.</span> : null}
+        </div>
+
+        <div className="section">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={form.useJump}
+              onChange={(e) => update('useJump', e.target.checked)}
+            />
+            Conectar a través de un bastión (ProxyJump)
           </label>
-        ) : null}
-        <label>
-          Directorio remoto base
-          <input
-            value={form.remoteRoot}
-            onChange={(e) => update('remoteRoot', e.target.value)}
-            placeholder="/var/www/app"
-          />
-        </label>
-        <label>
-          Directorio local base
-          <input
-            value={form.localRoot}
-            onChange={(e) => update('localRoot', e.target.value)}
-            placeholder="C:\proyectos\app"
-          />
-        </label>
-      </div>
-
-      <div className="section">
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={form.useJump}
-            onChange={(e) => update('useJump', e.target.checked)}
-          />
-          Conectar a través de un bastión (ProxyJump)
-        </label>
-        {form.useJump ? (
-          <div className="form-grid section">
-            <label>
-              Host del bastión
-              <input value={form.jumpHost} onChange={(e) => update('jumpHost', e.target.value)} />
-            </label>
-            <label>
-              Puerto
-              <input value={form.jumpPort} onChange={(e) => update('jumpPort', e.target.value)} inputMode="numeric" />
-            </label>
-            <label>
-              Usuario
-              <input value={form.jumpUsername} onChange={(e) => update('jumpUsername', e.target.value)} />
-            </label>
-            <label>
-              Autenticación
-              <select
-                value={form.jumpAuthMethod}
-                onChange={(e) => update('jumpAuthMethod', e.target.value as AuthMethod)}
-              >
-                <option value="agent">ssh-agent</option>
-                <option value="key">Llave privada</option>
-                <option value="password">Contraseña</option>
-              </select>
-            </label>
-            {form.jumpAuthMethod === 'key' ? (
-              <label className="span-2">
-                Llave del bastión
-                <input
-                  value={form.jumpPrivateKeyPath}
-                  onChange={(e) => update('jumpPrivateKeyPath', e.target.value)}
-                />
+          {form.useJump ? (
+            <div className="form-grid section">
+              <label>
+                Host del bastión
+                <input value={form.jumpHost} onChange={(e) => update('jumpHost', e.target.value)} />
               </label>
-            ) : null}
-            <p className="hint span-2">
-              El bastión usa el mismo secreto guardado para este servidor.
-            </p>
-          </div>
-        ) : null}
-      </div>
+              <label>
+                Puerto
+                <input value={form.jumpPort} onChange={(e) => update('jumpPort', e.target.value)} inputMode="numeric" />
+              </label>
+              <label>
+                Usuario
+                <input value={form.jumpUsername} onChange={(e) => update('jumpUsername', e.target.value)} />
+              </label>
+              <label>
+                Autenticación
+                <select
+                  value={form.jumpAuthMethod}
+                  onChange={(e) => update('jumpAuthMethod', e.target.value as AuthMethod)}
+                >
+                  <option value="agent">ssh-agent</option>
+                  <option value="key">Llave privada</option>
+                  <option value="password">Contraseña</option>
+                </select>
+              </label>
+              {form.jumpAuthMethod === 'key' ? (
+                <label className="span-2">
+                  Llave del bastión
+                  <input
+                    value={form.jumpPrivateKeyPath}
+                    onChange={(e) => update('jumpPrivateKeyPath', e.target.value)}
+                  />
+                </label>
+              ) : null}
+              <p className="hint span-2">
+                El bastión usa el mismo secreto guardado para este servidor.
+              </p>
+            </div>
+          ) : null}
+        </div>
 
-      {error ? <p className="error-banner">{error}</p> : null}
-    </Modal>
+        {error ? <p className="error-banner">{error}</p> : null}
+      </Modal>
+
+      {keyBrowserOpen ? (
+        <LocalPathBrowser
+          mode="file"
+          initialPath={form.privateKeyPath}
+          title="Elegir llave privada en el equipo del servicio"
+          onClose={() => setKeyBrowserOpen(false)}
+          onPick={(picked) => {
+            update('privateKeyPath', picked)
+            setKeyBrowserOpen(false)
+          }}
+        />
+      ) : null}
+
+      {localBrowserOpen ? (
+        <LocalPathBrowser
+          mode="directory"
+          initialPath={form.localRoot}
+          title="Elegir carpeta en el equipo del servicio"
+          onClose={() => setLocalBrowserOpen(false)}
+          onPick={(picked) => {
+            update('localRoot', picked)
+            setLocalBrowserOpen(false)
+          }}
+        />
+      ) : null}
+    </>
   )
 }

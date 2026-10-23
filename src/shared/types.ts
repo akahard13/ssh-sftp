@@ -82,6 +82,22 @@ export interface RemoteDir {
   isDirectory: boolean
 }
 
+/** Entrada del explorador de rutas del equipo que ejecuta la app. */
+export interface LocalEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+}
+
+export interface LocalDirListing {
+  path: string
+  parent: string | null
+  entries: LocalEntry[]
+}
+
+/** El escritorio usa Electron; el modo servidor corre en un navegador. */
+export type ClientPlatform = 'desktop' | 'web'
+
 export type CompareStatus = 'local-only' | 'remote-only' | 'modified' | 'identical' | 'same-size'
 
 export interface CompareEntry {

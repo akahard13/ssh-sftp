@@ -75,6 +75,14 @@ export function initUpdater(broadcast: (value: UpdateState) => void): void {
     return
   }
 
+  if (process.platform !== 'win32') {
+    setState({
+      status: 'unsupported',
+      message: 'El auto-update está disponible en el instalador de Windows. En Linux actualiza con npm o tu paquete.'
+    })
+    return
+  }
+
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.logger = null

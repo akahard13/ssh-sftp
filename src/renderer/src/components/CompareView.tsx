@@ -9,7 +9,9 @@ import type {
 } from '../../../shared/types'
 import DiffView from './DiffView'
 import FileTree from './FileTree'
+import LocalPathBrowser from './LocalPathBrowser'
 import RemotePathBrowser from './RemotePathBrowser'
+import { api } from '../lib/api'
 import { buildTree, collectDirPaths } from '../lib/tree'
 
 interface CompareViewProps {
@@ -40,6 +42,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const [pair, setPair] = useState<FilePair | null>(null)
   const [pairLoading, setPairLoading] = useState(false)
   const [browserOpen, setBrowserOpen] = useState(false)
+  const [localBrowserOpen, setLocalBrowserOpen] = useState(false)
   const [progress, setProgress] = useState<CompareProgress | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [excludeText, setExcludeText] = useState('')
@@ -47,13 +50,13 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const activeRequest = useRef<string | null>(null)
 
   useEffect(() => {
-    return window.api.compare.onProgress((incoming) => {
+    return api.compare.onProgress((incoming) => {
       if (incoming.requestId === activeRequest.current) setProgress(incoming)
     })
   }, [])
 
   useEffect(() => {
-    void window.api.compare.defaults().then(({ defaults, saved }) => {
+    void api.compare.defaults().then(({ defaults, saved }) => {
       setExcludeText((saved ?? defaults).join(', '))
     })
   }, [])
@@ -98,9 +101,11 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     const requestId = newRequestId()
     activeRequest.current = requestId
     setProgress(null)
-    void window.api.compare.saveExcludes(excludeList)
+    void api.compare.saveExcludes(excludeList).catch(() => {
+      /* se reintenta en la próxima comparación */
+    })
     try {
-      return await window.api.compare.run(
+      return await api.compare.run(
         requestId,
         profile.id,
         remotePath,
@@ -141,7 +146,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
 
   const cancelCompare = (): void => {
     const requestId = activeRequest.current
-    if (requestId) void window.api.compare.cancel(requestId)
+    if (requestId) void api.compare.cancel(requestId).catch(() => {})
   }
 
   const openFile = async (entry: CompareEntry): Promise<void> => {
@@ -156,7 +161,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     setActiveRel(entry.relPath)
     setPairLoading(true)
     try {
-      const loaded = await window.api.files.readPair(profile.id, remotePath, localPath, entry.relPath)
+      const loaded = await api.files.readPair(profile.id, remotePath, localPath, entry.relPath)
       setPair(loaded)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo leer el archivo.')
@@ -173,7 +178,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
         const compared = await runCompareRequest()
         if (!compared) return
         setResult(compared)
-        const refreshed = await window.api.files.readPair(
+        const refreshed = await api.files.readPair(
           profile.id,
           remotePath,
           localPath,
@@ -190,22 +195,29 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     <div className="compare">
       <div className="compare-toolbar">
         <label className="field">
-          <span>Directorio local</span>
+          <span>
+            Directorio local
+            {api.platform === 'web' ? <span className="muted"> (en el host del servicio)</span> : null}
+          </span>
           <div className="input-row">
             <input
               value={localPath}
               onChange={(e) => setLocalPath(e.target.value)}
-              placeholder="C:\proyectos\app"
+              placeholder={api.platform === 'web' ? '/home/usuario/proyecto' : 'C:\\proyectos\\app'}
             />
             <button
               type="button"
               className="ghost small"
               onClick={async () => {
-                const picked = await window.api.local.pickDirectory()
+                if (api.platform === 'web') {
+                  setLocalBrowserOpen(true)
+                  return
+                }
+                const picked = await api.local.pickDirectory()
                 if (picked) setLocalPath(picked)
               }}
             >
-              Elegir…
+              {api.platform === 'web' ? 'Explorar…' : 'Elegir…'}
             </button>
           </div>
         </label>
@@ -322,6 +334,19 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
           ) : null}
         </div>
       </div>
+
+      {localBrowserOpen ? (
+        <LocalPathBrowser
+          mode="directory"
+          initialPath={localPath}
+          title="Elegir carpeta en el equipo del servicio"
+          onClose={() => setLocalBrowserOpen(false)}
+          onPick={(picked) => {
+            setLocalPath(picked)
+            setLocalBrowserOpen(false)
+          }}
+        />
+      ) : null}
 
       {browserOpen ? (
         <RemotePathBrowser
