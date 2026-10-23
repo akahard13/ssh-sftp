@@ -1,8 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage } from 'node:http'
 
-export const SESSION_COOKIE = 'ssh_sftp_session'
-const SESSION_LABEL = 'ssh-sftp-session-v1'
+export const SESSION_COOKIE = 'deploysync_session'
+const SESSION_LABEL = 'deploysync-session-v1'
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 
 export function sessionValue(token: string): string {

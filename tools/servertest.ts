@@ -29,9 +29,9 @@ async function main(): Promise<void> {
   const custom = parseArgs(['--host', '0.0.0.0', '--port=8888', '--no-open'], {})
   assert(custom.host === '0.0.0.0' && custom.port === 8888, 'CLI acepta host y puerto', custom)
   assert(custom.openBrowser === false, 'CLI acepta --no-open', custom)
-  const envPort = parseArgs([], { SSH_SFTP_PORT: '9999' })
-  assert(envPort.port === 9999, 'CLI lee SSH_SFTP_PORT', envPort)
-  const invalidEnvPort = parseArgs([], { SSH_SFTP_PORT: '-1' })
+  const envPort = parseArgs([], { DEPLOYSYNC_PORT: '9999' })
+  assert(envPort.port === 9999, 'CLI lee DEPLOYSYNC_PORT', envPort)
+  const invalidEnvPort = parseArgs([], { DEPLOYSYNC_PORT: '-1' })
   assert(invalidEnvPort.port === DEFAULT_PORT, 'CLI ignora un puerto de entorno inválido', invalidEnvPort)
   let shortTokenFailed = false
   try {
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     'asString conserva espacios y saltos con trim:false'
   )
 
-  const sandbox = await mkdtemp(join(tmpdir(), 'ssh-sftp-web-test-'))
+  const sandbox = await mkdtemp(join(tmpdir(), 'deploysync-web-test-'))
   const webDir = join(sandbox, 'web')
   const dataDir = join(sandbox, 'data')
   const alphaDir = join(sandbox, 'alpha')
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
     const cookie = setCookie.split(';')[0]
     assert(login.status === 303, 'login correcto redirige', login.status)
     assert(login.headers.get('location') === '/', 'login redirige a la raíz', login.headers.get('location'))
-    assert(cookie.startsWith('ssh_sftp_session='), 'login entrega cookie de sesión', setCookie)
+    assert(cookie.startsWith('deploysync_session='), 'login entrega cookie de sesión', setCookie)
     assert(setCookie.includes('HttpOnly') && setCookie.includes('SameSite=Strict'), 'cookie endurecida', setCookie)
 
     const index = await fetch(base + '/', { headers: { cookie, accept: 'text/html' } })

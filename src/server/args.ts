@@ -21,13 +21,13 @@ export const MIN_TOKEN_LENGTH = 16
 export function defaultDataDir(): string {
   if (process.platform === 'win32') {
     const base = process.env.APPDATA || join(homedir(), 'AppData', 'Roaming')
-    return join(base, 'ssh-sftp-manager')
+    return join(base, 'deploysync')
   }
   if (process.platform === 'darwin') {
-    return join(homedir(), 'Library', 'Application Support', 'ssh-sftp-manager')
+    return join(homedir(), 'Library', 'Application Support', 'deploysync')
   }
   const base = process.env.XDG_CONFIG_HOME || join(homedir(), '.config')
-  return join(base, 'ssh-sftp-manager')
+  return join(base, 'deploysync')
 }
 
 function defaultWebDir(): string {
@@ -58,15 +58,15 @@ export function parseArgs(
   env: NodeJS.ProcessEnv = process.env
 ): ServerCliOptions {
   const options: ServerCliOptions = {
-    host: env.SSH_SFTP_HOST || '127.0.0.1',
-    port: numberFromEnv(env.SSH_SFTP_PORT ?? env.PORT, DEFAULT_PORT),
-    dataDir: resolve(env.SSH_SFTP_DATA_DIR || defaultDataDir()),
-    webDir: resolve(env.SSH_SFTP_WEB_DIR || defaultWebDir()),
-    token: env.SSH_SFTP_TOKEN || null,
-    openBrowser: boolFromEnv(env.SSH_SFTP_OPEN, true),
-    tlsCert: env.SSH_SFTP_TLS_CERT || null,
-    tlsKey: env.SSH_SFTP_TLS_KEY || null,
-    trustProxy: boolFromEnv(env.SSH_SFTP_TRUST_PROXY, false),
+    host: env.DEPLOYSYNC_HOST || '127.0.0.1',
+    port: numberFromEnv(env.DEPLOYSYNC_PORT ?? env.PORT, DEFAULT_PORT),
+    dataDir: resolve(env.DEPLOYSYNC_DATA_DIR || defaultDataDir()),
+    webDir: resolve(env.DEPLOYSYNC_WEB_DIR || defaultWebDir()),
+    token: env.DEPLOYSYNC_TOKEN || null,
+    openBrowser: boolFromEnv(env.DEPLOYSYNC_OPEN, true),
+    tlsCert: env.DEPLOYSYNC_TLS_CERT || null,
+    tlsKey: env.DEPLOYSYNC_TLS_KEY || null,
+    trustProxy: boolFromEnv(env.DEPLOYSYNC_TRUST_PROXY, false),
     help: false,
     versionRequested: false
   }
@@ -173,11 +173,11 @@ export function parseArgs(
 }
 
 export function helpText(version: string): string {
-  return `SSH · SFTP Manager v${version} — modo servidor web
+  return `DeploySync v${version} — modo servidor web
 
 Uso:
-  ssh-sftp-manager [opciones]
-  npx ssh-sftp-manager [opciones]
+  deploysync [opciones]
+  npx deploysync [opciones]
 
 Opciones:
   -H, --host <host>        Interfaz donde escuchar (por defecto 127.0.0.1).
@@ -187,7 +187,7 @@ Opciones:
   -w, --web-dir <ruta>     Carpeta con el renderer compilado (out/web).
   -t, --token <token>      Token de acceso (mínimo ${MIN_TOKEN_LENGTH} caracteres).
                            Si se omite, se genera uno persistente en <data-dir>/server-token.
-                           Prefiere SSH_SFTP_TOKEN: --token queda en el historial del shell.
+                           Prefiere DEPLOYSYNC_TOKEN: --token queda en el historial del shell.
       --tls-cert <ruta>    Certificado PEM para servir HTTPS.
       --tls-key <ruta>     Llave PEM del certificado.
       --trust-proxy        Confía en X-Forwarded-Proto (detrás de un proxy TLS).
@@ -197,14 +197,14 @@ Opciones:
   -h, --help               Muestra esta ayuda.
 
 Variables de entorno:
-  SSH_SFTP_HOST, SSH_SFTP_PORT, SSH_SFTP_DATA_DIR, SSH_SFTP_WEB_DIR,
-  SSH_SFTP_TOKEN, SSH_SFTP_TLS_CERT, SSH_SFTP_TLS_KEY, SSH_SFTP_TRUST_PROXY,
-  SSH_SFTP_OPEN. También se acepta PORT si SSH_SFTP_PORT no está definido.
+  DEPLOYSYNC_HOST, DEPLOYSYNC_PORT, DEPLOYSYNC_DATA_DIR, DEPLOYSYNC_WEB_DIR,
+  DEPLOYSYNC_TOKEN, DEPLOYSYNC_TLS_CERT, DEPLOYSYNC_TLS_KEY, DEPLOYSYNC_TRUST_PROXY,
+  DEPLOYSYNC_OPEN. También se acepta PORT si DEPLOYSYNC_PORT no está definido.
 
 Ejemplos:
-  npx ssh-sftp-manager --open
-  npx ssh-sftp-manager --host 0.0.0.0 --port 7777
-  SSH_SFTP_TOKEN='mi-token-largo-y-secreto' ssh-sftp-manager --host 0.0.0.0
+  npx deploysync --open
+  npx deploysync --host 0.0.0.0 --port 7777
+  DEPLOYSYNC_TOKEN='mi-token-largo-y-secreto' deploysync --host 0.0.0.0
 
 Seguridad:
   El modo servidor puede leer archivos del host y abrir sesiones SSH con las

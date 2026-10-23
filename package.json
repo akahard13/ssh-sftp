@@ -1,11 +1,10 @@
 {
-  "name": "ssh-sftp-manager",
-  "version": "0.2.1",
+  "name": "deploysync",
+  "version": "0.2.2",
   "description": "Gestor de múltiples sesiones SSH con comparador y despliegue selectivo por SFTP, en escritorio o como servidor web",
   "main": "./out/main/index.js",
   "bin": {
-    "ssh-sftp-manager": "out/server/cli.js",
-    "ssh-sftp": "out/server/cli.js"
+    "deploysync": "out/server/cli.js"
   },
   "files": [
     "out/server/**/*",
@@ -58,14 +57,15 @@
     "release": "electron-vite build && electron-builder --publish always"
   },
   "build": {
-    "appId": "com.company.ssh-sftp-manager",
-    "productName": "SSH SFTP Manager",
+    "appId": "com.deploysync.app",
+    "productName": "DeploySync",
     "directories": {
       "output": "dist"
     },
     "files": [
       "out/**/*",
       "package.json",
+      "resources/icon.png",
       "!**/*.map",
       "!out/web/**",
       "!out/server/**"
@@ -81,15 +81,19 @@
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "SSH SFTP Manager",
-      "artifactName": "SSH-SFTP-Manager-${version}-setup.${ext}"
+      "shortcutName": "DeploySync",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "artifactName": "DeploySync-${version}-setup.${ext}"
     },
     "linux": {
       "target": [
@@ -97,7 +101,8 @@
         "deb"
       ],
       "category": "Development",
-      "artifactName": "SSH-SFTP-Manager-${version}-${arch}.${ext}"
+      "icon": "build/icons",
+      "artifactName": "DeploySync-${version}-${arch}.${ext}"
     }
   },
   "devDependencies": {

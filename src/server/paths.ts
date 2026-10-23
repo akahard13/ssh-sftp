@@ -67,14 +67,14 @@ function decodeKey(raw: string): Buffer | null {
 }
 
 /**
- * Llave maestra del modo servidor. Prioridad: SSH_SFTP_MASTER_KEY y, si no,
+ * Llave maestra del modo servidor. Prioridad: DEPLOYSYNC_MASTER_KEY y, si no,
  * `<data-dir>/secret.key` (creada con 0600 en el primer arranque).
  */
 export function loadMasterKey(dataDir: string): Buffer {
-  const fromEnv = process.env.SSH_SFTP_MASTER_KEY
+  const fromEnv = process.env.DEPLOYSYNC_MASTER_KEY
   if (fromEnv) {
     const key = decodeKey(fromEnv)
-    if (!key) throw new Error('SSH_SFTP_MASTER_KEY debe ser de 32 bytes en base64 o hex.')
+    if (!key) throw new Error('DEPLOYSYNC_MASTER_KEY debe ser de 32 bytes en base64 o hex.')
     return key
   }
 

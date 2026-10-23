@@ -43,7 +43,7 @@ function appCsp(req: IncomingMessage): string {
   return APP_CSP_BASE + "; connect-src 'self'" + ws + ';'
 }
 const LOGIN_CSP =
-  "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+  "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
 
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -172,7 +172,7 @@ function updateStub(version: string): UpdateState {
   return {
     status: 'unsupported',
     currentVersion: version,
-    message: 'Modo servidor: actualiza con "npm install -g ssh-sftp-manager@latest".'
+    message: 'Modo servidor: actualiza con "npm install -g deploysync@latest".'
   }
 }
 
@@ -200,7 +200,8 @@ function loginPage(error: string | null): string {
     '<meta charset="utf-8" />',
     '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
     '<meta name="referrer" content="no-referrer" />',
-    '<title>SSH · SFTP Manager — Acceso</title>',
+    '<link rel="icon" href="/favicon.ico" />',
+    '<title>DeploySync — Acceso</title>',
     '<style>',
     ':root { color-scheme: dark; }',
     '* { box-sizing: border-box; }',
@@ -219,7 +220,7 @@ function loginPage(error: string | null): string {
     '</head>',
     '<body>',
     '<main class="card">',
-    '<h1>SSH · SFTP Manager</h1>',
+    '<h1>DeploySync</h1>',
     '<p>Servidor web. Introduce el token de acceso para continuar.</p>',
     message,
     '<form method="post" action="/api/login">',
@@ -517,6 +518,8 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     }
 
     if (pathname === '/favicon.ico') {
+      const served = await serveFile(req, res, join(webDir, 'favicon.ico'), 'public, max-age=86400')
+      if (served) return
       res.writeHead(204, { 'Cache-Control': 'public, max-age=86400' })
       res.end()
       return

@@ -44,7 +44,7 @@ export default function ServerSidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <span className="brand">SSH · SFTP</span>
+        <span className="brand">DeploySync</span>
         <button type="button" className="primary small" onClick={onAdd}>
           + Servidor
         </button>

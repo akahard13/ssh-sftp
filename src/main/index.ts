@@ -1,5 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
+import { cpSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
 import { electronSecretCodec } from './secret'
 import { disposeServices, initServices } from './services'
@@ -10,6 +12,21 @@ const isDev = Boolean(RENDERER_DEV_URL)
 
 let mainWindow: BrowserWindow | null = null
 
+/**
+ * La app se llamaba "SSH SFTP Manager": al renombrarla cambia `userData`, así
+ * que se copia la carpeta anterior la primera vez para no perder perfiles.
+ */
+function migrateLegacyUserData(): void {
+  const current = app.getPath('userData')
+  const legacy = join(app.getPath('appData'), 'SSH SFTP Manager')
+  if (existsSync(current) || !existsSync(legacy)) return
+  try {
+    cpSync(legacy, current, { recursive: true })
+  } catch (err) {
+    console.error('No se pudo migrar los datos anteriores:', err)
+  }
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1320,
@@ -18,7 +35,8 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     show: false,
     backgroundColor: '#0f1319',
-    title: 'SSH · SFTP Manager',
+    title: 'DeploySync',
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -71,6 +89,7 @@ if (!gotLock) {
   })
 
   app.whenReady().then(async () => {
+    migrateLegacyUserData()
     await initServices({
       dataDir: join(app.getPath('userData'), 'data'),
       secrets: electronSecretCodec,

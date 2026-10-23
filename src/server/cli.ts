@@ -80,12 +80,12 @@ async function main(): Promise<void> {
 
   const protocol = tls ? 'HTTPS' : 'HTTP'
   console.log('')
-  console.log('  SSH · SFTP Manager v' + running.version + ' — modo servidor web (' + protocol + ')')
+  console.log('  DeploySync v' + running.version + ' — modo servidor web (' + protocol + ')')
   console.log('  Datos:  ' + options.dataDir)
   console.log(
     '  Token:  ' +
       (options.token
-        ? 'definido por --token o SSH_SFTP_TOKEN'
+        ? 'definido por --token o DEPLOYSYNC_TOKEN'
         : tokenFilePath(options.dataDir))
   )
   console.log('')
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
     if (stopping) return
     stopping = true
     console.log('')
-    console.log('Deteniendo SSH · SFTP Manager…')
+    console.log('Deteniendo DeploySync…')
     void running
       .close()
       .then(() => process.exit(0))

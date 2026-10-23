@@ -1,4 +1,4 @@
-# SSH · SFTP Manager
+# DeploySync
 
 App para administrar **múltiples sesiones SSH** contra servidores privados, con terminal interactiva y un
 comparador de directorios que permite **subir solo los cambios seleccionados** por SFTP.
@@ -28,7 +28,7 @@ No abre varias ventanas: mantiene una sesión (y sus canales) por servidor y tú
 
 ### Windows: instalador de escritorio
 
-Descarga `SSH-SFTP-Manager-<versión>-setup.exe` desde
+Descarga `DeploySync-<versión>-setup.exe` desde
 [GitHub Releases](https://github.com/akahard13/ssh-sftp/releases) y ejecútalo. El instalador es
 `perMachine: false`: se instala en `%LOCALAPPDATA%` sin pedir administrador y se actualiza solo
 (ver [Actualizaciones](#actualizaciones)).
@@ -36,7 +36,7 @@ Descarga `SSH-SFTP-Manager-<versión>-setup.exe` desde
 ### Servidor web con `npx` (recomendado para Linux/macOS)
 
 ```bash
-npx ssh-sftp-manager --host 0.0.0.0 --port 7777
+npx deploysync --host 0.0.0.0 --port 7777
 ```
 
 La primera vez genera un token, imprime una URL como
@@ -49,8 +49,8 @@ dispositivo de la red.
 ### Servidor web con `npm` global
 
 ```bash
-npm install -g ssh-sftp-manager
-ssh-sftp-manager --host 0.0.0.0 --port 7777
+npm install -g deploysync
+deploysync --host 0.0.0.0 --port 7777
 ```
 
 ### Servidor web con `curl`
@@ -67,7 +67,7 @@ curl -fsSL https://raw.githubusercontent.com/akahard13/ssh-sftp/main/scripts/ins
 ```
 
 Opciones del instalador: `--prefix <ruta>`, `--port <puerto>`, `--start`, `--no-open`, `--help`.
-También acepta `SSH_SFTP_VERSION`, `SSH_SFTP_PREFIX`, `SSH_SFTP_HOST` y `SSH_SFTP_PORT`.
+También acepta `DEPLOYSYNC_VERSION`, `DEPLOYSYNC_PREFIX`, `DEPLOYSYNC_HOST` y `DEPLOYSYNC_PORT`.
 
 ### Linux: paquete de escritorio
 
@@ -101,7 +101,7 @@ Para probar el paquete npm antes de publicarlo:
 ```bash
 npm run build:web
 npm pack             # revisa el .tgz
-npm install -g ./ssh-sftp-manager-0.2.1.tgz
+npm install -g ./deploysync-0.2.2.tgz
 ```
 
 ## Comandos
@@ -127,15 +127,15 @@ npm install -g ./ssh-sftp-manager-0.2.1.tgz
 
 ```bash
 # Solo este equipo (por defecto)
-npx ssh-sftp-manager
+npx deploysync
 
 # Toda la red local
-npx ssh-sftp-manager --host 0.0.0.0 --port 7777
+npx deploysync --host 0.0.0.0 --port 7777
 
 # HTTPS directo
-npx ssh-sftp-manager --host 0.0.0.0 --port 7777 \
-  --tls-cert /etc/ssl/certs/ssh-sftp.crt \
-  --tls-key /etc/ssl/private/ssh-sftp.key
+npx deploysync --host 0.0.0.0 --port 7777 \
+  --tls-cert /etc/ssl/certs/deploysync.crt \
+  --tls-key /etc/ssl/private/deploysync.key
 ```
 
 Al arrancar imprime una URL por cada interfaz disponible, cada una con su `?token=`. Al abrirla, el
@@ -152,19 +152,19 @@ a pantallas pequeñas (tablet y móvil): la barra lateral pasa arriba y el compa
 
 | Opción | Variable | Valor por defecto | Descripción |
 | --- | --- | --- | --- |
-| `--host, -H` | `SSH_SFTP_HOST` | `127.0.0.1` | Interfaz de escucha. `0.0.0.0` para la LAN. |
-| `--port, -p` | `SSH_SFTP_PORT` o `PORT` | `7777` | Puerto HTTP/HTTPS. `0` elige uno libre. |
-| `--data-dir, -d` | `SSH_SFTP_DATA_DIR` | ver [Datos](#dónde-se-guardan-los-datos) | Perfiles, secretos, known_hosts y auditoría. |
-| `--web-dir, -w` | `SSH_SFTP_WEB_DIR` | `out/web` junto al CLI | Renderer compilado que se sirve. |
-| `--token, -t` | `SSH_SFTP_TOKEN` | token persistente | Token de acceso (mínimo 16 caracteres). |
-| `--tls-cert` | `SSH_SFTP_TLS_CERT` | — | Certificado PEM para HTTPS. |
-| `--tls-key` | `SSH_SFTP_TLS_KEY` | — | Llave privada PEM. |
-| `--trust-proxy` | `SSH_SFTP_TRUST_PROXY` | `false` | Confía en `X-Forwarded-Proto` para marcar la cookie `Secure`. |
-| `--open / --no-open` | `SSH_SFTP_OPEN` | abierto | Abre el navegador al arrancar. |
+| `--host, -H` | `DEPLOYSYNC_HOST` | `127.0.0.1` | Interfaz de escucha. `0.0.0.0` para la LAN. |
+| `--port, -p` | `DEPLOYSYNC_PORT` o `PORT` | `7777` | Puerto HTTP/HTTPS. `0` elige uno libre. |
+| `--data-dir, -d` | `DEPLOYSYNC_DATA_DIR` | ver [Datos](#dónde-se-guardan-los-datos) | Perfiles, secretos, known_hosts y auditoría. |
+| `--web-dir, -w` | `DEPLOYSYNC_WEB_DIR` | `out/web` junto al CLI | Renderer compilado que se sirve. |
+| `--token, -t` | `DEPLOYSYNC_TOKEN` | token persistente | Token de acceso (mínimo 16 caracteres). |
+| `--tls-cert` | `DEPLOYSYNC_TLS_CERT` | — | Certificado PEM para HTTPS. |
+| `--tls-key` | `DEPLOYSYNC_TLS_KEY` | — | Llave privada PEM. |
+| `--trust-proxy` | `DEPLOYSYNC_TRUST_PROXY` | `false` | Confía en `X-Forwarded-Proto` para marcar la cookie `Secure`. |
+| `--open / --no-open` | `DEPLOYSYNC_OPEN` | abierto | Abre el navegador al arrancar. |
 | `--help, -h` | — | — | Ayuda. |
 | `--version, -v` | — | — | Versión. |
 
-Las variables `SSH_SFTP_MASTER_KEY` (32 bytes en base64 o hex) permiten usar una llave de cifrado
+Las variables `DEPLOYSYNC_MASTER_KEY` (32 bytes en base64 o hex) permiten usar una llave de cifrado
 externa; si no se define, se crea `<data-dir>/secret.key` con permisos `0600`.
 
 ### Token y rotación
@@ -173,20 +173,20 @@ El token se guarda en `<data-dir>/server-token` con permisos `0600` para que las
 reinicios. Para rotarlo:
 
 1. Detén el servidor.
-2. Borra `<data-dir>/server-token` (o define un `SSH_SFTP_TOKEN` nuevo y largo).
+2. Borra `<data-dir>/server-token` (o define un `DEPLOYSYNC_TOKEN` nuevo y largo).
 3. Arranca de nuevo y usa la URL con el token nuevo.
 
 El token es una **credencial administrativa**: permite abrir SSH, leer archivos del host y escribir en
 los servidores. No lo compartas por canales inseguros. Si usas `--token`, queda en el historial del
-shell y en la lista de procesos; prefiere la variable `SSH_SFTP_TOKEN`.
+shell y en la lista de procesos; prefiere la variable `DEPLOYSYNC_TOKEN`.
 
 ### Dónde se guardan los datos
 
 | Sistema | Carpeta por defecto |
 | --- | --- |
-| Linux | `~/.config/ssh-sftp-manager` (o `$XDG_CONFIG_HOME`) |
-| macOS | `~/Library/Application Support/ssh-sftp-manager` |
-| Windows | `%APPDATA%\ssh-sftp-manager` |
+| Linux | `~/.config/deploysync` (o `$XDG_CONFIG_HOME`) |
+| macOS | `~/Library/Application Support/deploysync` |
+| Windows | `%APPDATA%\deploysync` |
 
 Contenido: `profiles.json`, `secrets.json`, `known_hosts.json`, `settings.json`, `audit.json`,
 `server-token` y `secret.key`. El escritorio Electron usa su propio directorio de usuario; el modo
@@ -195,25 +195,25 @@ servidor no lee esa carpeta salvo que le pases `--data-dir`.
 Los secretos del modo servidor se cifran con **AES-256-GCM**. Protege `secrets.json` frente a copias
 sueltas, pero la llave vive en el mismo directorio: quien pueda leer toda la carpeta (o ejecutar como el
 mismo usuario) puede descifrarlos. Restringe permisos del directorio y de la cuenta del servicio. Si
-pierdes `secret.key` (y no usas `SSH_SFTP_MASTER_KEY`), deberás volver a escribir las contraseñas y
+pierdes `secret.key` (y no usas `DEPLOYSYNC_MASTER_KEY`), deberás volver a escribir las contraseñas y
 passphrases de los perfiles.
 
 ### systemd (Linux)
 
 ```ini
 [Unit]
-Description=SSH · SFTP Manager (servidor web)
+Description=DeploySync (servidor web)
 After=network.target
 
 [Service]
 Type=simple
 User=deploy
-Environment=SSH_SFTP_HOST=0.0.0.0
-Environment=SSH_SFTP_PORT=7777
-Environment=SSH_SFTP_DATA_DIR=/var/lib/ssh-sftp-manager
+Environment=DEPLOYSYNC_HOST=0.0.0.0
+Environment=DEPLOYSYNC_PORT=7777
+Environment=DEPLOYSYNC_DATA_DIR=/var/lib/deploysync
 # Si usas ssh-agent:
 # Environment=SSH_AUTH_SOCK=/run/user/1000/ssh-agent.socket
-ExecStart=/usr/local/bin/ssh-sftp-manager --no-open
+ExecStart=/usr/local/bin/deploysync --no-open
 Restart=on-failure
 UMask=0077
 
@@ -222,11 +222,11 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-sudo mkdir -p /var/lib/ssh-sftp-manager
-sudo chown deploy:deploy /var/lib/ssh-sftp-manager
+sudo mkdir -p /var/lib/deploysync
+sudo chown deploy:deploy /var/lib/deploysync
 sudo systemctl daemon-reload
-sudo systemctl enable --now ssh-sftp-manager
-sudo journalctl -u ssh-sftp-manager -f   # muestra la URL con el token
+sudo systemctl enable --now deploysync
+sudo journalctl -u deploysync -f   # muestra la URL con el token
 ```
 
 ### Reverse proxy con TLS
@@ -239,8 +239,8 @@ server {
     listen 443 ssl http2;
     server_name ssh.ejemplo.com;
 
-    ssl_certificate     /etc/ssl/certs/ssh-sftp.crt;
-    ssl_certificate_key /etc/ssl/private/ssh-sftp.key;
+    ssl_certificate     /etc/ssl/certs/deploysync.crt;
+    ssl_certificate_key /etc/ssl/private/deploysync.key;
 
     # Las subidas viajan por HTTP: deja margen sobre el límite de la app (32 MB).
     client_max_body_size 100m;
@@ -313,16 +313,16 @@ entonces la app muestra "Actualizaciones no configuradas" y no intenta descargar
 #### Cómo publicar una versión
 
 **Todo sale de `version` en `package.json`**: el nombre de los assets
-(`SSH-SFTP-Manager-<version>-setup.exe`), el campo `version` de `latest.yml` **y el tag del release**,
+(`DeploySync-<version>-setup.exe`), el campo `version` de `latest.yml` **y el tag del release**,
 que electron-builder calcula como `v` + esa versión. Los tags de git **no influyen**: si creas `v0.1.5`
 pero `package.json` sigue en `0.1.4`, se publica el release `v0.1.4` y tu tag queda huérfano.
 
 ```powershell
 
-# 1. Sube la versión en package.json ("version": "0.2.1")
+# 1. Sube la versión en package.json ("version": "0.2.2")
 # 2. Crea y sube el tag ANTES de publicar (ver nota abajo)
-git tag v0.2.1
-git push origin v0.2.1
+git tag v0.2.2
+git push origin v0.2.2
 # 3. Compila y publica
 $env:GH_TOKEN = "github_pat_..."
 npm run release
@@ -351,7 +351,7 @@ npm run release
 Esto sube el `.exe` del instalador, el `latest.yml` y el `.blockmap` al release de GitHub. El
 `.blockmap` es lo que permite descargas diferenciales: solo se bajan los bloques que cambiaron.
 
-> El nombre del archivo local ya está fijado como `SSH-SFTP-Manager-<versión>-setup.exe`, que es
+> El nombre del archivo local ya está fijado como `DeploySync-<versión>-setup.exe`, que es
 > exactamente el que espera `latest.yml`. Si publicas el release **a mano** en vez de con
 > `npm run release`, sube el archivo sin renombrarlo: cualquier cambio de nombre hace que la app reciba
 > un 404 al buscar la actualización.
@@ -370,8 +370,8 @@ El modo servidor **no se autoactualiza**; el panel muestra un aviso y el botón 
 Actualiza desde la terminal y reinicia el servicio:
 
 ```bash
-npm install -g ssh-sftp-manager@latest
-sudo systemctl restart ssh-sftp-manager
+npm install -g deploysync@latest
+sudo systemctl restart deploysync
 ```
 
 Los perfiles y secretos quedan en `<data-dir>` y sobreviven a la actualización.
@@ -383,11 +383,11 @@ incluye `out/server`, `out/web`, `scripts/install.sh` y este README; no incluye 
 
 ```bash
 npm login
-npm version 0.2.1 --no-git-tag-version
+npm version 0.2.2 --no-git-tag-version
 npm publish
 ```
 
-Comprueba el contenido antes con `npm pack --dry-run`. El nombre `ssh-sftp-manager` debe estar
+Comprueba el contenido antes con `npm pack --dry-run`. El nombre `deploysync` debe estar
 disponible en el registro.
 
 ## Modelo de seguridad
@@ -397,7 +397,7 @@ disponible en el registro.
 - **Secretos cifrados**:
   - Escritorio: `safeStorage` (DPAPI en Windows, Keychain en macOS, libsecret en Linux), en un archivo
     aparte con permisos `0600`.
-  - Servidor: AES-256-GCM con una llave `0600` en el directorio de datos (o `SSH_SFTP_MASTER_KEY`).
+  - Servidor: AES-256-GCM con una llave `0600` en el directorio de datos (o `DEPLOYSYNC_MASTER_KEY`).
   Las contraseñas y passphrases nunca llegan al renderer ni se escriben en logs.
 - **Autenticación web por token**: cookie de sesión `HttpOnly`, `SameSite=Strict` y `Secure` bajo TLS.
   La cookie guarda un HMAC del token, no el token. Los POST y el WebSocket validan `Origin`; el login
@@ -447,7 +447,7 @@ src/
       sftp.ts      operaciones SFTP, walk recursivo y escritura atómica
       compare.ts   comparación de directorios y lectura de pares de archivos
   server/          modo servidor web headless
-    cli.ts         binario npm (ssh-sftp-manager)
+    cli.ts         binario npm (deploysync)
     args.ts        opciones y variables de entorno
     index.ts       HTTP, WebSocket, sesiones, estáticos y RPC
     auth.ts        token, cookie HMAC, Origin y rate limit

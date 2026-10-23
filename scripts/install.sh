@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Instalador de SSH · SFTP Manager en modo servidor web.
+# Instalador de DeploySync en modo servidor web.
 #
 #   curl -fsSL https://raw.githubusercontent.com/akahard13/ssh-sftp/main/scripts/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s -- --start
@@ -7,11 +7,11 @@
 # Instala el paquete de npm y, opcionalmente, arranca el servidor web.
 set -euo pipefail
 
-PACKAGE="${SSH_SFTP_PACKAGE:-ssh-sftp-manager}"
-VERSION="${SSH_SFTP_VERSION:-latest}"
-PREFIX="${SSH_SFTP_PREFIX:-}"
-PORT="${SSH_SFTP_PORT:-7777}"
-HOST="${SSH_SFTP_HOST:-0.0.0.0}"
+PACKAGE="${DEPLOYSYNC_PACKAGE:-deploysync}"
+VERSION="${DEPLOYSYNC_VERSION:-latest}"
+PREFIX="${DEPLOYSYNC_PREFIX:-}"
+PORT="${DEPLOYSYNC_PORT:-7777}"
+HOST="${DEPLOYSYNC_HOST:-0.0.0.0}"
 START=0
 NO_OPEN=0
 
@@ -26,10 +26,10 @@ Uso: install.sh [opciones]
   -h, --help        Muestra esta ayuda.
 
 Variables:
-  SSH_SFTP_VERSION  Versión de npm a instalar (por defecto latest).
-  SSH_SFTP_PREFIX   Equivale a --prefix.
-  SSH_SFTP_HOST     Interfaz del servidor con --start (por defecto 0.0.0.0).
-  SSH_SFTP_PORT     Puerto del servidor con --start (por defecto 7777).
+  DEPLOYSYNC_VERSION  Versión de npm a instalar (por defecto latest).
+  DEPLOYSYNC_PREFIX   Equivale a --prefix.
+  DEPLOYSYNC_HOST     Interfaz del servidor con --start (por defecto 0.0.0.0).
+  DEPLOYSYNC_PORT     Puerto del servidor con --start (por defecto 7777).
 EOF
 }
 
@@ -85,26 +85,26 @@ say "Instalando $SPEC para $(uname -s) $(uname -m)"
 BIN=""
 if [ -n "$PREFIX" ]; then
   npm install -g --prefix "$PREFIX" "$SPEC"
-  BIN="$PREFIX/bin/ssh-sftp-manager"
+  BIN="$PREFIX/bin/deploysync"
 else
   if npm install -g "$SPEC"; then
     GLOBAL_PREFIX="$(npm prefix -g)"
-    BIN="$GLOBAL_PREFIX/bin/ssh-sftp-manager"
-    [ -x "$BIN" ] || BIN="$GLOBAL_PREFIX/ssh-sftp-manager"
+    BIN="$GLOBAL_PREFIX/bin/deploysync"
+    [ -x "$BIN" ] || BIN="$GLOBAL_PREFIX/deploysync"
   else
     warn "La instalación global falló (¿permisos?). Reintentando en ~/.local…"
     mkdir -p "$HOME/.local"
     npm install -g --prefix "$HOME/.local" "$SPEC"
-    BIN="$HOME/.local/bin/ssh-sftp-manager"
+    BIN="$HOME/.local/bin/deploysync"
   fi
 fi
 
 if [ ! -x "$BIN" ]; then
-  FOUND="$(command -v ssh-sftp-manager || true)"
+  FOUND="$(command -v deploysync || true)"
   if [ -n "$FOUND" ]; then
     BIN="$FOUND"
   else
-    fail "La instalación terminó pero no se encontró el comando ssh-sftp-manager."
+    fail "La instalación terminó pero no se encontró el comando deploysync."
   fi
 fi
 
@@ -112,7 +112,7 @@ BIN_DIR="$(dirname "$BIN")"
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *)
-    warn "Añade $BIN_DIR al PATH para usar 'ssh-sftp-manager' en nuevas terminales:"
+    warn "Añade $BIN_DIR al PATH para usar 'deploysync' en nuevas terminales:"
     warn "  export PATH=\"$BIN_DIR:\$PATH\""
     ;;
 esac
@@ -130,11 +130,11 @@ cat <<EOF
 
 Listo. Arranca el servidor con:
 
-  ssh-sftp-manager --host 0.0.0.0 --port $PORT
+  deploysync --host 0.0.0.0 --port $PORT
 
 La primera vez se genera un token en:
-  ~/.config/ssh-sftp-manager/server-token   (Linux)
-  ~/Library/Application Support/ssh-sftp-manager/server-token   (macOS)
+  ~/.config/deploysync/server-token   (Linux)
+  ~/Library/Application Support/deploysync/server-token   (macOS)
 
 Abre la URL con ?token=... que imprime el comando. Para arrancarlo ahora mismo:
 
