@@ -33,29 +33,41 @@ body {
 
 /* ---------- Scrollbars ---------- */
 
+/* Barra clásica siempre visible, con el tema oscuro. Usamos las propiedades
+   estándar porque en Chromium 121+ (Electron 45 incluido) tienen prioridad y
+   descartan ::-webkit-scrollbar. Ojo: scrollbar-width NO se hereda, así que
+   hay que aplicarla a cada elemento; scrollbar-color sí se hereda. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #5b7394 #1b2330;
+}
+
+/* Reserva para motores sin scrollbar-color (WebKit antiguo). Se ignoran en
+   cuanto el navegador entiende las propiedades estándar de arriba, así que
+   deben verse igual de claras: pista visible y pulgar con contraste. */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-corner {
-  background: transparent;
+  background: #1b2330;
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #35455c;
+  background-color: #5b7394;
   background-clip: content-box;
   border: 2px solid transparent;
   border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #4a5f7d;
+  background-color: #6f89ab;
 }
 
 ::-webkit-scrollbar-thumb:active {
-  background-color: #5b7394;
+  background-color: #7f99bb;
 }
 
 .app {
@@ -579,25 +591,66 @@ select:focus {
   background: var(--panel);
 }
 
-/* Tres paneles que se reparten el ancho: la lista de archivos se comprime hasta
-   140px y el diff nunca baja de 280px, así que ninguno colapsa a cero. */
+/* Lista de carpetas + área de diff: el ancho de la lista viene del estado
+   (arrastrando el divisor), con 140px de mínimo y 60% del contenedor de máximo. */
 .compare-body {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(140px, 300px) minmax(280px, 1fr);
+  display: flex;
+  align-items: stretch;
 }
 
 .file-list {
+  flex: 0 1 auto;
+  width: var(--list-width, 300px);
+  max-width: 60%;
   min-width: 0;
-  border-right: 1px solid var(--border);
   overflow-y: auto;
+  background: var(--panel);
+}
+
+/* El diff ocupa todo el ancho restante, sea cual sea el ancho de la lista. */
+.compare-body > .diff-area {
+  flex: 1 1 0;
+}
+
+/* Divisor arrastrable entre la lista y el diff (mismo patrón que .diff-resizer). */
+.list-resizer {
+  flex: 0 0 6px;
+  position: relative;
+  border-left: 1px solid var(--border);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.list-resizer::before {
+  content: '';
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.list-resizer:hover,
+.list-resizer:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+
+/* Riel que queda cuando la lista está oculta; el botón » la restaura. */
+.list-rail {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8px 2px;
+  border-right: 1px solid var(--border);
   background: var(--panel);
 }
 
 .file-list-head {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   padding: 8px 12px;
   font-size: 11px;
   color: var(--muted);
@@ -806,11 +859,6 @@ select:focus {
 
 .diff-pane.remote .diff-line {
   grid-template-columns: 20px 44px auto;
-}
-
-.diff-scroll::-webkit-scrollbar-track,
-.result-pane pre::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.03);
 }
 
 .diff-resizer {
@@ -1128,8 +1176,18 @@ select:focus {
 
   .file-list {
     width: 100%;
+    max-width: none;
     flex: 0 0 auto;
     max-height: 34vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .list-resizer {
+    display: none;
+  }
+
+  .list-rail {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

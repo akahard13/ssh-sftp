@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { JSX } from 'react'
+import type { CSSProperties, JSX, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import type {
   CompareEntry,
   CompareProgress,
@@ -14,8 +14,16 @@ import RemotePathBrowser from './RemotePathBrowser'
 import { api } from '../lib/api'
 import { buildTree, collectDirPaths } from '../lib/tree'
 
+const LIST_MIN_WIDTH = 140
+const LIST_MAX_RATIO = 0.6
+const LIST_DEFAULT_WIDTH = 300
+
 interface CompareViewProps {
   profile: ServerProfile
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max))
 }
 
 function newRequestId(): string {
@@ -47,7 +55,11 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [excludeText, setExcludeText] = useState('')
   const [excludeOpen, setExcludeOpen] = useState(false)
+  const [listWidth, setListWidth] = useState(LIST_DEFAULT_WIDTH)
+  const [listHidden, setListHidden] = useState(false)
   const activeRequest = useRef<string | null>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const listDrag = useRef<{ startX: number; startWidth: number } | null>(null)
 
   useEffect(() => {
     return api.compare.onProgress((incoming) => {
@@ -86,6 +98,40 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
       else next.add(path)
       return next
     })
+  }
+
+  const maxListWidth = (): number => {
+    const width = bodyRef.current?.getBoundingClientRect().width ?? 0
+    return width === 0 ? LIST_MIN_WIDTH : Math.max(LIST_MIN_WIDTH, width * LIST_MAX_RATIO)
+  }
+
+  const beginListDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    listDrag.current = { startX: event.clientX, startWidth: listWidth }
+  }
+
+  const moveListDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const drag = listDrag.current
+    if (!drag) return
+    const next = drag.startWidth + event.clientX - drag.startX
+    setListWidth(clamp(next, LIST_MIN_WIDTH, maxListWidth()))
+  }
+
+  const endListDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (!listDrag.current) return
+    listDrag.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  const nudgeList = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const step = event.shiftKey ? 48 : 16
+    const direction = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0
+    if (direction === 0) return
+    event.preventDefault()
+    setListWidth((current) => clamp(current + direction, LIST_MIN_WIDTH, maxListWidth()))
   }
 
   const excludeList = useMemo(
@@ -272,52 +318,100 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
       {error ? <p className="error-banner">{error}</p> : null}
       {toast ? <p className="ok-banner">{toast}</p> : null}
 
-      <div className="compare-body">
-        <div className="file-list">
-          <div className="file-list-head">
-            <span>{result ? `${visibleEntries.length} archivo(s)` : 'Sin comparar'}</span>
-            {result ? (
-              <span className="tree-buttons">
-                <button
-                  type="button"
-                  className="ghost small"
-                  onClick={() => setExpanded(new Set(collectDirPaths(tree)))}
-                >
-                  Expandir
-                </button>
-                <button type="button" className="ghost small" onClick={() => setExpanded(new Set())}>
-                  Cerrar
-                </button>
-              </span>
-            ) : null}
+      <div className="compare-body" ref={bodyRef}>
+        {listHidden ? (
+          <div className="list-rail">
+            <button
+              type="button"
+              className="ghost small icon"
+              onClick={() => setListHidden(false)}
+              title="Mostrar las carpetas"
+              aria-label="Mostrar las carpetas"
+            >
+              »
+            </button>
           </div>
-          {result?.truncated ? (
-            <p className="truncate-warning">
-              Se alcanzó el límite de archivos por lado: puede haber archivos que no aparecen en la
-              lista. Compara carpetas más pequeñas o excluye las pesadas.
-            </p>
-          ) : null}
-          {result ? (
-            <p className="list-note">
-              {result.excludedDirs.toLocaleString('es')} carpetas y{' '}
-              {result.excludedFiles.toLocaleString('es')} archivos ignorados ·{' '}
-              {result.dirsScanned.toLocaleString('es')} carpetas revisadas
-            </p>
-          ) : null}
-          {result && visibleEntries.length > 0 ? (
-            <FileTree
-              nodes={tree}
-              activePath={activeRel}
-              expanded={expanded}
-              onToggle={toggleDir}
-              onSelect={(entry) => void openFile(entry)}
+        ) : (
+          <>
+            <div
+              className="file-list"
+              style={{ '--list-width': `${listWidth}px` } as CSSProperties}
+            >
+              <div className="file-list-head">
+                <span>{result ? `${visibleEntries.length} archivo(s)` : 'Sin comparar'}</span>
+                <span className="tree-buttons">
+                  {result ? (
+                    <>
+                      <button
+                        type="button"
+                        className="ghost small"
+                        onClick={() => setExpanded(new Set(collectDirPaths(tree)))}
+                      >
+                        Expandir
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost small"
+                        onClick={() => setExpanded(new Set())}
+                      >
+                        Cerrar
+                      </button>
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="ghost small icon"
+                    onClick={() => setListHidden(true)}
+                    title="Ocultar las carpetas"
+                    aria-label="Ocultar las carpetas"
+                  >
+                    «
+                  </button>
+                </span>
+              </div>
+              {result?.truncated ? (
+                <p className="truncate-warning">
+                  Se alcanzó el límite de archivos por lado: puede haber archivos que no aparecen
+                  en la lista. Compara carpetas más pequeñas o excluye las pesadas.
+                </p>
+              ) : null}
+              {result ? (
+                <p className="list-note">
+                  {result.excludedDirs.toLocaleString('es')} carpetas y{' '}
+                  {result.excludedFiles.toLocaleString('es')} archivos ignorados ·{' '}
+                  {result.dirsScanned.toLocaleString('es')} carpetas revisadas
+                </p>
+              ) : null}
+              {result && visibleEntries.length > 0 ? (
+                <FileTree
+                  nodes={tree}
+                  activePath={activeRel}
+                  expanded={expanded}
+                  onToggle={toggleDir}
+                  onSelect={(entry) => void openFile(entry)}
+                />
+              ) : null}
+              {result && visibleEntries.length === 0 ? (
+                <p className="empty-hint">No hay diferencias.</p>
+              ) : null}
+              {!result ? <p className="empty-hint">Elige las carpetas y pulsa Comparar.</p> : null}
+            </div>
+
+            <div
+              className="list-resizer"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Ancho de la lista de carpetas"
+              title="Arrastra para cambiar el ancho (o usa las flechas)"
+              tabIndex={0}
+              onPointerDown={beginListDrag}
+              onPointerMove={moveListDrag}
+              onPointerUp={endListDrag}
+              onPointerCancel={endListDrag}
+              onKeyDown={nudgeList}
             />
-          ) : null}
-          {result && visibleEntries.length === 0 ? (
-            <p className="empty-hint">No hay diferencias.</p>
-          ) : null}
-          {!result ? <p className="empty-hint">Elige las carpetas y pulsa Comparar.</p> : null}
-        </div>
+          </>
+        )}
 
         <div className="diff-area">
           {pairLoading ? <p className="empty-hint">Cargando archivo…</p> : null}

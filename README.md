@@ -285,12 +285,16 @@ misma terminal, verán y enviarán las mismas pulsaciones.
    **árbol plegable** con el estado de cada archivo (`solo local`, `solo servidor`, `distinto`, `igual`,
    `mismo tamaño`). Cada carpeta muestra cuántas diferencias tiene debajo, así que sabes dónde mirar sin
    desplegar todo; `Expandir` y `Cerrar` abren o pliegan el árbol completo.
+   Arrastra el divisor (o usa `←`/`→` con `Shift` para pasos grandes) para **ensanchar o encoger** la
+   lista; el botón `«` de la cabecera la **oculta** y el riel `»` de la izquierda la vuelve a mostrar.
    Con el botón **Exclusiones** ajustas qué se ignora antes de comparar: acepta nombres de carpeta o de
    archivo y comodines `*` (`node_modules`, `*.log`, `config/local.php`). Lo que escribas queda guardado.
    En el modo web, el botón **Explorar…** abre un navegador de carpetas **del equipo que ejecuta el
    servicio**, porque los diálogos nativos no existen en el navegador.
 5. **Revisar un archivo**: se abre el diff a dos columnas (servidor ↔ local) con un bloque seleccionable
-   por cada cambio, más un tercer panel con el **archivo generado**.
+   por cada cambio, más un tercer panel con el **archivo generado**. Los tres paneles tienen scroll
+   propio (vertical y horizontal) y dos divisores arrastrables, también ajustables con las flechas del
+   teclado, para repartir el ancho a gusto.
 6. **Subir**: `Subir seleccionados` escribe en el servidor solo los bloques marcados, de forma atómica y
    con respaldo opcional.
 
