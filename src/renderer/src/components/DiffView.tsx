@@ -1,10 +1,22 @@
-import { Fragment, useMemo, useState } from 'react'
-import type { JSX } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import type { JSX, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import type { FilePair } from '../../../shared/types'
 import { api } from '../lib/api'
 import { buildDiff, buildResult, newFileDiff, splitLines } from '../lib/merge'
 
 const MISSING_REMOTE_HASH = 'MISSING'
+const MIN_SHARE = 0.1
+
+interface DragState {
+  divider: 'servers' | 'result'
+  startX: number
+  remote: number
+  local: number
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max))
+}
 
 interface DiffViewProps {
   serverId: string
@@ -39,6 +51,11 @@ export default function DiffView({ serverId, pair, onUploaded }: DiffViewProps):
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Proporciones de ancho de cada panel; los divisores las ajustan al arrastrar.
+  const [split, setSplit] = useState({ remote: 0.34, local: 0.33 })
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<DragState | null>(null)
+
   const generated = useMemo(
     () => buildResult(remoteLines, model.hunks, selected),
     [remoteLines, model.hunks, selected]
@@ -51,6 +68,56 @@ export default function DiffView({ serverId, pair, onUploaded }: DiffViewProps):
       else next.add(id)
       return next
     })
+  }
+
+  const beginDrag =
+    (divider: DragState['divider']) =>
+    (event: ReactPointerEvent<HTMLDivElement>): void => {
+      event.preventDefault()
+      event.currentTarget.setPointerCapture(event.pointerId)
+      dragRef.current = {
+        divider,
+        startX: event.clientX,
+        remote: split.remote,
+        local: split.local
+      }
+    }
+
+  const moveDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const drag = dragRef.current
+    const width = bodyRef.current?.getBoundingClientRect().width ?? 0
+    if (!drag || width === 0) return
+    const delta = (event.clientX - drag.startX) / width
+    if (drag.divider === 'servers') {
+      const maxRemote = showResult ? 1 - drag.local - MIN_SHARE : 1 - MIN_SHARE
+      setSplit({ remote: clamp(drag.remote + delta, MIN_SHARE, maxRemote), local: drag.local })
+      return
+    }
+    const maxLocal = 1 - drag.remote - MIN_SHARE
+    setSplit({ remote: drag.remote, local: clamp(drag.local + delta, MIN_SHARE, maxLocal) })
+  }
+
+  const endDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (!dragRef.current) return
+    dragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  const nudgeDivider =
+    (divider: DragState['divider']) =>
+    (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const step = 0.02
+    const direction = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0
+    if (direction === 0) return
+    event.preventDefault()
+    if (divider === 'servers') {
+      const maxRemote = showResult ? 1 - split.local - MIN_SHARE : 1 - MIN_SHARE
+      setSplit({ ...split, remote: clamp(split.remote + direction, MIN_SHARE, maxRemote) })
+      return
+    }
+    setSplit({ ...split, local: clamp(split.local + direction, MIN_SHARE, 1 - split.remote - MIN_SHARE) })
   }
 
   const rows = useMemo(() => {
@@ -148,62 +215,115 @@ export default function DiffView({ serverId, pair, onUploaded }: DiffViewProps):
       {error ? <p className="error-banner">{error}</p> : null}
       {message ? <p className="ok-banner">{message}</p> : null}
 
-      <div className={`diff-body ${showResult ? 'with-result' : ''}`}>
-        <div className="diff-scroll">
-          <div className="diff-grid">
-            <span className="diff-col-label" style={{ gridColumn: '1 / 4' }}>
-              Servidor {isNewFile ? '(no existe)' : '(remoto)'}
-            </span>
-            <span className="diff-col-label" style={{ gridColumn: '4 / 6' }}>
-              Local
-            </span>
-            {rows.map(({ row, isFirstOfHunk }) => {
-              if (row.kind === 'collapse') {
+      <div className="diff-body" ref={bodyRef}>
+        <section className="diff-pane remote" style={{ flexGrow: split.remote }}>
+          <div className="diff-col-label">Servidor {isNewFile ? '(no existe)' : '(remoto)'}</div>
+          <div className="diff-scroll">
+            <div className="diff-rows">
+              {rows.map(({ row, isFirstOfHunk }) => {
+                if (row.kind === 'collapse') {
+                  return (
+                    <div className="diff-collapse" key={row.key}>
+                      ⋯ {row.count} línea(s) sin cambios ⋯
+                    </div>
+                  )
+                }
+                if (row.kind === 'equal') {
+                  return (
+                    <div className="diff-line" key={row.key}>
+                      <span className="diff-gutter" />
+                      <span className="diff-no">{row.aNo}</span>
+                      <span className="diff-code">{row.text}</span>
+                    </div>
+                  )
+                }
+                const applied = selected.has(row.hunkId)
                 return (
-                  <span className="diff-collapse" key={row.key}>
-                    ⋯ {row.count} línea(s) sin cambios ⋯
-                  </span>
+                  <div className="diff-line" key={row.key}>
+                    <span className={`diff-gutter ${applied ? 'applied' : ''}`}>
+                      {isFirstOfHunk ? (
+                        <input
+                          type="checkbox"
+                          checked={applied}
+                          onChange={() => toggleHunk(row.hunkId)}
+                          title={applied ? 'Se subirá este bloque' : 'Este bloque no se subirá'}
+                        />
+                      ) : null}
+                    </span>
+                    <span className={`diff-no ${row.del ? 'del' : ''}`}>{row.del?.no ?? ''}</span>
+                    <span className={`diff-code ${row.del ? 'del' : 'blank'}`}>{row.del?.text ?? ''}</span>
+                  </div>
                 )
-              }
-              if (row.kind === 'equal') {
-                return (
-                  <Fragment key={row.key}>
-                    <span className="diff-gutter" />
-                    <span className="diff-no">{row.aNo}</span>
-                    <span className="diff-code">{row.text}</span>
-                    <span className="diff-no">{row.bNo}</span>
-                    <span className="diff-code">{row.text}</span>
-                  </Fragment>
-                )
-              }
-              const applied = selected.has(row.hunkId)
-              return (
-                <Fragment key={row.key}>
-                  <span className={`diff-gutter ${applied ? 'applied' : ''}`}>
-                    {isFirstOfHunk ? (
-                      <input
-                        type="checkbox"
-                        checked={applied}
-                        onChange={() => toggleHunk(row.hunkId)}
-                        title={applied ? 'Se subirá este bloque' : 'Este bloque no se subirá'}
-                      />
-                    ) : null}
-                  </span>
-                  <span className={`diff-no ${row.del ? 'del' : ''}`}>{row.del?.no ?? ''}</span>
-                  <span className={`diff-code ${row.del ? 'del' : 'blank'}`}>{row.del?.text ?? ''}</span>
-                  <span className={`diff-no ${row.add ? 'add' : ''}`}>{row.add?.no ?? ''}</span>
-                  <span className={`diff-code ${row.add ? 'add' : 'blank'}`}>{row.add?.text ?? ''}</span>
-                </Fragment>
-              )
-            })}
+              })}
+            </div>
           </div>
-        </div>
+        </section>
+
+        <div
+          className="diff-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Ancho del panel servidor"
+          tabIndex={0}
+          onPointerDown={beginDrag('servers')}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onKeyDown={nudgeDivider('servers')}
+        />
+
+        <section
+          className="diff-pane local"
+          style={{ flexGrow: showResult ? split.local : 1 - split.remote }}
+        >
+          <div className="diff-col-label">Local</div>
+          <div className="diff-scroll">
+            <div className="diff-rows">
+              {rows.map(({ row }) => {
+                if (row.kind === 'collapse') {
+                  return <div className="diff-collapse gap" key={row.key} />
+                }
+                if (row.kind === 'equal') {
+                  return (
+                    <div className="diff-line" key={row.key}>
+                      <span className="diff-no">{row.bNo}</span>
+                      <span className="diff-code">{row.text}</span>
+                    </div>
+                  )
+                }
+                return (
+                  <div className="diff-line" key={row.key}>
+                    <span className={`diff-no ${row.add ? 'add' : ''}`}>{row.add?.no ?? ''}</span>
+                    <span className={`diff-code ${row.add ? 'add' : 'blank'}`}>{row.add?.text ?? ''}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </section>
 
         {showResult ? (
-          <aside className="result-pane">
-            <div className="diff-col-label">Resultado generado</div>
-            <pre>{generated}</pre>
-          </aside>
+          <>
+            <div
+              className="diff-resizer"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Ancho del panel resultado"
+              tabIndex={0}
+              onPointerDown={beginDrag('result')}
+              onPointerMove={moveDrag}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+              onKeyDown={nudgeDivider('result')}
+            />
+            <aside
+              className="result-pane"
+              style={{ flexGrow: Math.max(MIN_SHARE, 1 - split.remote - split.local) }}
+            >
+              <div className="diff-col-label">Resultado generado</div>
+              <pre>{generated}</pre>
+            </aside>
+          </>
         ) : null}
       </div>
     </div>

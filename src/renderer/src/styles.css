@@ -31,6 +31,33 @@ body {
   overflow: hidden;
 }
 
+/* ---------- Scrollbars ---------- */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #35455c;
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #4a5f7d;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: #5b7394;
+}
+
 .app {
   display: flex;
   height: 100%;
@@ -736,44 +763,87 @@ select:focus {
   flex-wrap: wrap;
 }
 
+/* Tres paneles (servidor, local y resultado) con scroll propio y divisores
+   arrastrables: cada uno se puede ensanchar o encoger a gusto. */
 .diff-body {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  align-items: stretch;
 }
 
-.diff-body.with-result {
-  grid-template-columns: minmax(160px, 1fr) minmax(140px, 380px);
+.diff-pane {
+  display: flex;
+  flex-direction: column;
+  flex-basis: 0;
+  flex-grow: 1;
+  flex-shrink: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
-/* El diff es una sola grilla: comparte el ancho de columnas entre todas las filas
-   y permite desplazar el área completa, igual que el panel de resultado. */
 .diff-scroll {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
   font-size: 12px;
 }
 
-.diff-grid {
-  display: grid;
-  grid-template-columns: 20px 44px auto 44px auto;
+.diff-rows {
   width: max-content;
   min-width: 100%;
 }
 
+.diff-line {
+  display: grid;
+  grid-template-columns: 44px auto;
+  width: max-content;
+  min-width: 100%;
+}
+
+.diff-pane.remote .diff-line {
+  grid-template-columns: 20px 44px auto;
+}
+
+.diff-scroll::-webkit-scrollbar-track,
+.result-pane pre::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.diff-resizer {
+  flex: 0 0 6px;
+  position: relative;
+  border-left: 1px solid var(--border);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.diff-resizer::before {
+  content: '';
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.diff-resizer:hover,
+.diff-resizer:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+
 .diff-col-label {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--panel-2);
+  flex: 0 0 auto;
   padding: 4px 8px;
+  background: var(--panel-2);
   font-size: 11px;
   color: var(--muted);
   border-bottom: 1px solid var(--border);
   font-family: 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .diff-gutter {
@@ -824,7 +894,6 @@ select:focus {
 }
 
 .diff-collapse {
-  grid-column: 1 / -1;
   padding: 2px 12px;
   color: var(--muted);
   background: #11161e;
@@ -832,13 +901,21 @@ select:focus {
   border-bottom: 1px solid #1c2431;
   font-size: 11px;
   font-family: 'Segoe UI', system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+/* Mantiene la misma altura en el panel local, sin repetir el texto. */
+.diff-collapse.gap {
+  visibility: hidden;
 }
 
 .result-pane {
-  min-width: 0;
-  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  flex-basis: 0;
+  flex-grow: 1;
+  flex-shrink: 1;
+  min-width: 0;
   min-height: 0;
   background: #0b1016;
 }
@@ -1080,12 +1157,17 @@ select:focus {
     grid-column: auto;
   }
 
-  .diff-scroll {
-    overflow-x: auto;
+  .diff-body {
+    flex-direction: column;
   }
 
-  .diff-columns,
-  .diff-row {
-    min-width: 640px;
+  .diff-pane,
+  .result-pane {
+    flex: 1 1 0;
+    min-height: 140px;
+  }
+
+  .diff-resizer {
+    display: none;
   }
 }
