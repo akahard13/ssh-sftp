@@ -1,8 +1,7 @@
 {
   "name": "ssh-sftp-manager",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Gestor de múltiples sesiones SSH con comparador y despliegue selectivo por SFTP, en escritorio o como servidor web",
-
   "main": "./out/main/index.js",
   "bin": {
     "ssh-sftp-manager": "out/server/cli.js",

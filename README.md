@@ -101,7 +101,7 @@ Para probar el paquete npm antes de publicarlo:
 ```bash
 npm run build:web
 npm pack             # revisa el .tgz
-npm install -g ./ssh-sftp-manager-0.2.0.tgz
+npm install -g ./ssh-sftp-manager-0.2.1.tgz
 ```
 
 ## Comandos
