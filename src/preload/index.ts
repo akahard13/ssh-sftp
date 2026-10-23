@@ -6,6 +6,8 @@ import type {
   CompareProgress,
   CompareResult,
   ConnectionStatus,
+  DownloadRequest,
+  DownloadResult,
   FilePair,
   HostKeyPrompt,
   LocalDirListing,
@@ -107,7 +109,9 @@ const api: AppApi = {
       relPath: string
     ): Promise<FilePair> =>
       ipcRenderer.invoke('file:read-pair', serverId, remoteRoot, localRoot, relPath),
-    upload: (request: UploadRequest): Promise<UploadResult> => ipcRenderer.invoke('file:upload', request)
+    upload: (request: UploadRequest): Promise<UploadResult> => ipcRenderer.invoke('file:upload', request),
+    download: (request: DownloadRequest): Promise<DownloadResult> =>
+      ipcRenderer.invoke('file:download', request)
   },
   updates: {
     state: (): Promise<UpdateState> => ipcRenderer.invoke('updates:state'),

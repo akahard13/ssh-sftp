@@ -295,6 +295,10 @@ misma terminal, verán y enviarán las mismas pulsaciones.
    por cada cambio, más un tercer panel con el **archivo generado**. Los tres paneles tienen scroll
    propio (vertical y horizontal) y dos divisores arrastrables, también ajustables con las flechas del
    teclado, para repartir el ancho a gusto.
+   Si el archivo aparece como `solo servidor`, al abrirlo ves su contenido y el botón **Descargar** lo
+   copia a tu directorio local respetando la ruta relativa (crea las carpetas que falten y nunca
+   sobrescribe un archivo existente). Los binarios y los archivos grandes no se previsualizan, pero se
+   pueden descargar igual (hasta 64 MB).
 6. **Subir**: `Subir seleccionados` escribe en el servidor solo los bloques marcados, de forma atómica y
    con respaldo opcional.
 

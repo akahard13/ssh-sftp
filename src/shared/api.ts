@@ -6,6 +6,8 @@ import type {
   CompareProgress,
   CompareResult,
   ConnectionStatus,
+  DownloadRequest,
+  DownloadResult,
   FilePair,
   HostKeyPrompt,
   LocalDirListing,
@@ -88,6 +90,8 @@ export interface AppApi {
       relPath: string
     ): Promise<FilePair>
     upload(request: UploadRequest): Promise<UploadResult>
+    /** Copia al equipo local un archivo que solo existe en el servidor. */
+    download(request: DownloadRequest): Promise<DownloadResult>
   }
   updates: {
     state(): Promise<UpdateState>

@@ -198,12 +198,6 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const openFile = async (entry: CompareEntry): Promise<void> => {
     setError(null)
     setToast(null)
-    if (entry.status === 'remote-only') {
-      setActiveRel(entry.relPath)
-      setPair(null)
-      setError('El archivo solo existe en el servidor; no hay versión local para comparar.')
-      return
-    }
     setActiveRel(entry.relPath)
     setPairLoading(true)
     try {
@@ -217,7 +211,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     }
   }
 
-  const uploaded = (message: string): void => {
+  const refreshed = (message: string): void => {
     setToast(message)
     void (async () => {
       try {
@@ -419,8 +413,11 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
             <DiffView
               key={`${pair.remotePath}::${pair.remoteHash}`}
               serverId={profile.id}
+              remoteRoot={remotePath}
+              localRoot={localPath}
               pair={pair}
-              onUploaded={uploaded}
+              onUploaded={refreshed}
+              onDownloaded={refreshed}
             />
           ) : null}
           {!pairLoading && !pair ? (

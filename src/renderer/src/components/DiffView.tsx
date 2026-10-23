@@ -20,8 +20,11 @@ function clamp(value: number, min: number, max: number): number {
 
 interface DiffViewProps {
   serverId: string
+  remoteRoot: string
+  localRoot: string
   pair: FilePair
   onUploaded: (message: string) => void
+  onDownloaded: (message: string) => void
 }
 
 function formatSize(bytes: number): string {
@@ -30,7 +33,14 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
-export default function DiffView({ serverId, pair, onUploaded }: DiffViewProps): JSX.Element {
+export default function DiffView({
+  serverId,
+  remoteRoot,
+  localRoot,
+  pair,
+  onUploaded,
+  onDownloaded
+}: DiffViewProps): JSX.Element {
   const remoteLines = useMemo(() => splitLines(pair.remoteText), [pair])
   const localLines = useMemo(() => splitLines(pair.localText), [pair])
 
@@ -48,6 +58,7 @@ export default function DiffView({ serverId, pair, onUploaded }: DiffViewProps):
   const [showResult, setShowResult] = useState(true)
   const [backup, setBackup] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -130,6 +141,78 @@ export default function DiffView({ serverId, pair, onUploaded }: DiffViewProps):
   }, [model.rows])
 
   const isNewFile = pair.remoteHash === MISSING_REMOTE_HASH
+
+  const download = async (): Promise<void> => {
+    setError(null)
+    setMessage(null)
+    setDownloading(true)
+    try {
+      const result = await api.files.download({
+        serverId,
+        remoteRoot,
+        localRoot,
+        relPath: pair.relPath
+      })
+      setMessage(`Descargado en ${result.localPath} (${formatSize(result.bytes)}).`)
+      onDownloaded(`${pair.relPath} descargado (${formatSize(result.bytes)}).`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo descargar el archivo.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  if (pair.localMissing) {
+    const lines = pair.binary || pair.tooLarge ? [] : splitLines(pair.remoteText)
+    return (
+      <div className="diff-panel">
+        <header className="diff-header">
+          <div className="diff-title">
+            <strong>{pair.relPath}</strong>
+            <span className="muted">solo en el servidor · {formatSize(pair.remoteSize)}</span>
+          </div>
+          <div className="diff-actions">
+            <button
+              type="button"
+              className="primary small"
+              onClick={() => void download()}
+              disabled={downloading}
+            >
+              {downloading ? 'Descargando…' : 'Descargar'}
+            </button>
+          </div>
+        </header>
+        {error ? <p className="error-banner">{error}</p> : null}
+        {message ? <p className="ok-banner">{message}</p> : null}
+        <div className="diff-body">
+          <section className="diff-pane" style={{ flexGrow: 1 }}>
+            <div className="diff-col-label">Servidor (remoto) — todavía no existe en local</div>
+            {pair.binary ? (
+              <p className="empty-hint">
+                Es un archivo binario; descárgalo para tenerlo en el directorio local.
+              </p>
+            ) : pair.tooLarge ? (
+              <p className="empty-hint">
+                Demasiado grande para previsualizarlo ({formatSize(pair.remoteSize)}); puedes
+                descargarlo igualmente.
+              </p>
+            ) : (
+              <div className="diff-scroll">
+                <div className="diff-rows">
+                  {lines.map((text, index) => (
+                    <div className="diff-line" key={index}>
+                      <span className="diff-no">{index + 1}</span>
+                      <span className="diff-code">{text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    )
+  }
 
   if (pair.binary) {
     return (

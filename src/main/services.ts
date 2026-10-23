@@ -45,6 +45,7 @@ import {
   remoteStat
 } from './ssh/sftp'
 import { compareDirectories, hashBuffer, MISSING_REMOTE_HASH, readPair } from './ssh/compare'
+import { writeLocalFile } from './localFiles'
 import {
   asAbsoluteRemotePath,
   asBoolean,
@@ -58,6 +59,7 @@ import {
 
 const AUTH_METHODS = ['password', 'key', 'agent'] as const
 const MAX_UPLOAD_BYTES = 32 * 1024 * 1024
+const MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
 const MAX_LOCAL_ENTRIES = 2000
 
 /** Eventos que el núcleo emite hacia el host (Electron IPC o WebSocket). */
@@ -147,6 +149,15 @@ function requireProfile(serverId: unknown): ServerProfile {
   const profile = getServer(id)
   if (!profile) throw new ValidationError('Servidor desconocido.')
   return profile
+}
+
+/** Ruta relativa con `/` y sin segmentos vacíos, `.` ni `..`. */
+function parseRelPath(value: unknown): string {
+  const rel = asString(value, 'relPath', { max: 1024 })
+  if (rel.split('/').some((part) => part.length === 0 || part === '..' || part === '.')) {
+    throw new ValidationError('relPath no permitido.')
+  }
+  return rel
 }
 
 /** Patrones de exclusión: nombres de carpeta o archivo, y `*`/`?` como comodines. */
@@ -390,10 +401,7 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
       const profile = requireProfile(args[0])
       const remoteRootPath = asAbsoluteRemotePath(args[1], 'remoteRoot')
       const localRootPath = asString(args[2], 'localRoot', { max: 2048 })
-      const rel = asString(args[3], 'relPath', { max: 1024 })
-      if (rel.split('/').some((part) => part.length === 0 || part === '..' || part === '.')) {
-        throw new ValidationError('relPath no permitido.')
-      }
+      const rel = parseRelPath(args[3])
       const remotePath = posix.join(remoteRootPath, rel)
       assertRemoteAllowed(profile, remotePath)
       const localPath = join(localRootPath, ...rel.split('/'))
@@ -442,6 +450,37 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
       })
 
       return { ok: true, bytes: payload.length, remotePath, backupPath }
+    }
+
+    case 'file:download': {
+      const raw = asObject(args[0], 'request')
+      const profile = requireProfile(raw.serverId)
+      const rel = parseRelPath(raw.relPath)
+      const remoteRootPath = asAbsoluteRemotePath(raw.remoteRoot, 'remoteRoot')
+      const remotePath = posix.join(remoteRootPath, rel)
+      assertRemoteAllowed(profile, remotePath)
+
+      const localRootPath = asString(raw.localRoot, 'localRoot', { max: 2048 })
+
+      const sftp = await getSftp(profile.id)
+      const remoteInfo = await remoteStat(sftp, remotePath)
+      if (!remoteInfo) throw new Error('El archivo ya no existe en el servidor.')
+      if (remoteInfo.size > MAX_DOWNLOAD_BYTES) {
+        throw new ValidationError('El archivo excede el tamaño permitido para descargar (64 MB).')
+      }
+
+      const payload = await remoteReadFile(sftp, remotePath)
+      const localPath = await writeLocalFile(localRootPath, rel, payload)
+
+      await appendAudit({
+        at: new Date().toISOString(),
+        serverId: profile.id,
+        serverName: profile.name,
+        action: 'download',
+        detail: `${posix.basename(remotePath)} (${payload.length} bytes)`
+      })
+
+      return { ok: true, bytes: payload.length, localPath }
     }
 
     default:

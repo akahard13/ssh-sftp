@@ -144,6 +144,8 @@ export interface FilePair {
   remoteMode: number
   binary: boolean
   tooLarge: boolean
+  /** El archivo existe en el servidor pero no en local. */
+  localMissing: boolean
 }
 
 export interface UploadRequest {
@@ -160,6 +162,19 @@ export interface UploadResult {
   bytes: number
   remotePath: string
   backupPath: string | null
+}
+
+export interface DownloadRequest {
+  serverId: string
+  remoteRoot: string
+  localRoot: string
+  relPath: string
+}
+
+export interface DownloadResult {
+  ok: boolean
+  bytes: number
+  localPath: string
 }
 
 export interface OpenTerminalResult {
@@ -181,7 +196,7 @@ export interface AuditEvent {
   at: string
   serverId: string
   serverName: string
-  action: 'connect' | 'disconnect' | 'upload' | 'hostkey-trusted' | 'hostkey-mismatch'
+  action: 'connect' | 'disconnect' | 'upload' | 'download' | 'hostkey-trusted' | 'hostkey-mismatch'
   detail: string
 }
 

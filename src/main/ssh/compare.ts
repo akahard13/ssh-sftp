@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs'
+import { statSync, type Stats } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { join, posix } from 'node:path'
@@ -158,14 +158,49 @@ function looksBinary(buffer: Buffer): boolean {
 
 export const MISSING_REMOTE_HASH = 'MISSING'
 
+async function statOrNull(path: string): Promise<Stats | null> {
+  try {
+    return await stat(path)
+  } catch {
+    return null
+  }
+}
+
 export async function readPair(
   sftp: SFTPWrapper,
   remotePath: string,
   localPath: string,
   relPath: string
 ): Promise<FilePair> {
-  const localStats = await stat(localPath)
-  const remoteStats = await remoteStat(sftp, remotePath)
+  const [localStats, remoteStats] = await Promise.all([statOrNull(localPath), remoteStat(sftp, remotePath)])
+  if (!localStats && !remoteStats) {
+    throw new Error('El archivo no existe ni en el servidor ni en el directorio local.')
+  }
+
+  // Solo en el servidor: se muestra el contenido remoto y se ofrece descargarlo.
+  if (!localStats && remoteStats) {
+    const tooLarge = remoteStats.size > LIMITS.maxDiffBytes
+    const remoteBuffer = tooLarge ? null : await remoteReadFile(sftp, remotePath)
+    const binary = remoteBuffer ? looksBinary(remoteBuffer) : false
+    return {
+      relPath,
+      localPath,
+      remotePath,
+      localText: '',
+      remoteText: remoteBuffer && !binary ? remoteBuffer.toString('utf8') : '',
+      localSize: 0,
+      remoteSize: remoteStats.size,
+      remoteHash: remoteBuffer ? hashBuffer(remoteBuffer) : '',
+      remoteMode: remoteStats.mode,
+      binary,
+      tooLarge,
+      localMissing: true
+    }
+  }
+
+  if (!localStats) {
+    throw new Error('El archivo no existe en el directorio local.')
+  }
 
   if (!remoteStats) {
     const localBuffer = await readFile(localPath)
@@ -182,7 +217,8 @@ export async function readPair(
       remoteHash: MISSING_REMOTE_HASH,
       remoteMode: 0o644,
       binary,
-      tooLarge
+      tooLarge,
+      localMissing: false
     }
   }
 
@@ -199,7 +235,8 @@ export async function readPair(
       remoteHash: '',
       remoteMode: remoteStats.mode,
       binary: false,
-      tooLarge: true
+      tooLarge: true,
+      localMissing: false
     }
   }
 
@@ -217,7 +254,8 @@ export async function readPair(
     remoteHash: hashBuffer(remoteBuffer),
     remoteMode: remoteStats.mode,
     binary,
-    tooLarge: false
+    tooLarge: false,
+    localMissing: false
   }
 }
 
