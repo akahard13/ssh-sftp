@@ -33,6 +33,11 @@ Descarga `DeploySync-<versión>-setup.exe` desde
 `perMachine: false`: se instala en `%LOCALAPPDATA%` sin pedir administrador y se actualiza solo
 (ver [Actualizaciones](#actualizaciones)).
 
+> **Si vienes de la versión anterior ("SSH SFTP Manager")**, la primera vez que abras DeploySync se
+> copian los perfiles, secretos, `known_hosts`, auditoría y ajustes desde
+> `%APPDATA%\ssh-sftp-manager\data` a `%APPDATA%\deploysync\data`. Después puedes desinstalar la app
+> antigua. La versión web también cambia de directorio: usa `--data-dir` si quieres conservar el anterior.
+
 ### Servidor web con `npx` (recomendado para Linux/macOS)
 
 ```bash
