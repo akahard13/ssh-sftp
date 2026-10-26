@@ -324,20 +324,17 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
 
     case 'hostkey:trust': {
       const profile = requireProfile(args[0])
-      const hostName = asString(args[2], 'host', { max: 255 })
-      const portNumber = asNumber(args[3], 'port', { min: 1, max: 65535, integer: true })
-      await trustHostKey(
-        hostName,
-        portNumber,
-        asString(args[1], 'fingerprint', { max: 200 }),
-        asString(args[4], 'algorithm', { max: 64 })
-      )
+      const fingerprint = asString(args[1], 'fingerprint', { max: 200 })
+      const algorithm = asString(args[2], 'algorithm', { max: 64 })
+      const hostName = asString(args[3], 'host', { max: 255 })
+      const portNumber = asNumber(args[4], 'port', { min: 1, max: 65535, integer: true })
+      await trustHostKey(hostName, portNumber, fingerprint, algorithm)
       await appendAudit({
         at: new Date().toISOString(),
         serverId: profile.id,
         serverName: profile.name,
         action: 'hostkey-trusted',
-        detail: `${hostName}:${portNumber} ${String(args[1])}`
+        detail: `${hostName}:${portNumber} ${fingerprint}`
       })
       await connect(profile.id)
       return true
