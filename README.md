@@ -300,7 +300,8 @@ misma terminal, verán y enviarán las mismas pulsaciones.
    sobrescribe un archivo existente). Los binarios y los archivos grandes no se previsualizan, pero se
    pueden descargar igual (hasta 64 MB).
 6. **Subir**: `Subir seleccionados` escribe en el servidor solo los bloques marcados, de forma atómica y
-   con respaldo opcional.
+   con respaldo opcional. Si el archivo es nuevo y su carpeta tampoco existe en el servidor, se crea la
+   carpeta (y sus padres) antes de escribir.
 
 ## Actualizaciones
 

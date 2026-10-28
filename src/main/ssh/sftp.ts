@@ -302,6 +302,29 @@ function chmodFile(sftp: SFTPWrapper, path: string, mode: number): Promise<void>
   })
 }
 
+function mkdirRemote(sftp: SFTPWrapper, path: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    sftp.mkdir(path, { mode: 0o755 }, (err) => (err ? reject(err) : resolve()))
+  })
+}
+
+/**
+ * Crea el directorio remoto (y sus padres) si todavía no existe, para poder
+ * subir archivos en carpetas nuevas sin que el SFTP falle con "No such file".
+ */
+async function ensureRemoteDir(sftp: SFTPWrapper, dir: string): Promise<void> {
+  if (!dir || dir === '/' || dir === '.') return
+  if (await remoteStat(sftp, dir)) return
+  await ensureRemoteDir(sftp, posix.dirname(dir))
+  try {
+    await mkdirRemote(sftp, dir)
+  } catch (err) {
+    // Otra escritura pudo crearlo entre el stat y el mkdir.
+    if (await remoteStat(sftp, dir)) return
+    throw err
+  }
+}
+
 function renamePath(sftp: SFTPWrapper, from: string, to: string): Promise<void> {
   return new Promise((resolve, reject) => {
     sftp.rename(from, to, (err) => (err ? reject(err) : resolve()))
@@ -364,6 +387,7 @@ export async function atomicUpload(
   const mode = existing ? existing.mode & 0o777 : 0o644
 
   try {
+    await ensureRemoteDir(sftp, dir)
     const handle = await openFile(sftp, tmp, 'w')
     try {
       const CHUNK = 32 * 1024
