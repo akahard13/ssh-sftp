@@ -33,6 +33,28 @@ Descarga `DeploySync-<versión>-setup.exe` desde
 `perMachine: false`: se instala en `%LOCALAPPDATA%` sin pedir administrador y se actualiza solo
 (ver [Actualizaciones](#actualizaciones)).
 
+#### Instalación silenciosa (sin ventanas)
+
+El `.exe` es un instalador NSIS, así que acepta sus parámetros estándar:
+
+```powershell
+# instala sin abrir ninguna ventana (per-usuario, bajo %LOCALAPPDATA%)
+.\DeploySync-0.2.9-setup.exe /S
+
+# ruta de instalación propia: /D va al final y sin comillas
+.\DeploySync-0.2.9-setup.exe /S /D=C:\Apps\DeploySync
+```
+
+Como es `perMachine: false`, no pide permisos de administrador. Para desplegarlo en varios equipos:
+
+```powershell
+Invoke-Command -ComputerName PC1,PC2 -ScriptBlock {
+  Start-Process '\\srv\deploy\DeploySync-0.2.9-setup.exe' -ArgumentList '/S' -Wait
+}
+```
+
+Las actualizaciones automáticas ya se instalan en silencio: el actualizador ejecuta el instalador con `/S`.
+
 > **Si vienes de la versión anterior ("SSH SFTP Manager")**, la primera vez que abras DeploySync se
 > copian los perfiles, secretos, `known_hosts`, auditoría y ajustes desde
 > `%APPDATA%\ssh-sftp-manager\data` a `%APPDATA%\deploysync\data`, junto con la llave de cifrado de
