@@ -18,6 +18,9 @@ import type {
   TerminalDataEvent,
   TerminalExitEvent,
   UpdateState,
+  UploadManyRequest,
+  UploadManyResult,
+  UploadProgress,
   UploadRequest,
   UploadResult
 } from '../../../shared/types'
@@ -50,7 +53,9 @@ const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
 
 function timeoutFor(method: string): number {
   if (method === 'compare:run') return 30 * 60 * 1000
-  if (method === 'file:upload' || method === 'file:download') return 10 * 60 * 1000
+  if (method === 'file:upload' || method === 'file:upload-many' || method === 'file:download') {
+    return 10 * 60 * 1000
+  }
   return DEFAULT_TIMEOUT_MS
 }
 
@@ -372,6 +377,10 @@ export function createWebApi(): AppApi {
       readPair: (serverId, remoteRoot, localRoot, relPath) =>
         call<FilePair>('file:read-pair', serverId, remoteRoot, localRoot, relPath),
       upload: (request: UploadRequest) => httpRpc<UploadResult>('file:upload', [request]),
+      uploadMany: (request: UploadManyRequest) =>
+        httpRpc<UploadManyResult>('file:upload-many', [request]),
+      onUploadProgress: (handler: (progress: UploadProgress) => void) =>
+        client.subscribe('evt:upload-progress', handler as Listener),
       download: (request: DownloadRequest) => call<DownloadResult>('file:download', request)
     },
     updates: {

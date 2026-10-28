@@ -700,6 +700,38 @@ select:focus {
   background: var(--panel-2);
 }
 
+/* La fila de carpeta es un contenedor: el toggle y el botón de subir son botones. */
+.tree-row.dir {
+  padding-right: 4px;
+}
+
+.tree-dir-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tree-upload {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  line-height: 1;
+  opacity: 0;
+}
+
+.tree-row.dir:hover .tree-upload,
+.tree-upload:focus-visible {
+  opacity: 1;
+}
+
 .tree-row.file.active {
   background: #172231;
   box-shadow: inset 2px 0 0 var(--accent);

@@ -18,6 +18,9 @@ import type {
   TerminalDataEvent,
   TerminalExitEvent,
   UpdateState,
+  UploadManyRequest,
+  UploadManyResult,
+  UploadProgress,
   UploadRequest,
   UploadResult
 } from './types'
@@ -90,6 +93,9 @@ export interface AppApi {
       relPath: string
     ): Promise<FilePair>
     upload(request: UploadRequest): Promise<UploadResult>
+    /** Sube el contenido local de varios archivos (por ejemplo, una carpeta entera). */
+    uploadMany(request: UploadManyRequest): Promise<UploadManyResult>
+    onUploadProgress(handler: (progress: UploadProgress) => void): Unsubscribe
     /** Copia al equipo local un archivo que solo existe en el servidor. */
     download(request: DownloadRequest): Promise<DownloadResult>
   }

@@ -300,8 +300,12 @@ misma terminal, verán y enviarán las mismas pulsaciones.
    sobrescribe un archivo existente). Los binarios y los archivos grandes no se previsualizan, pero se
    pueden descargar igual (hasta 64 MB).
 6. **Subir**: `Subir seleccionados` escribe en el servidor solo los bloques marcados, de forma atómica y
-   con respaldo opcional. Si el archivo es nuevo y su carpeta tampoco existe en el servidor, se crea la
-   carpeta (y sus padres) antes de escribir.
+   con respaldo opcional (desmarcado por defecto). Si el archivo es nuevo y su carpeta tampoco existe en
+   el servidor, se crea la carpeta (y sus padres) antes de escribir.
+   Con el botón `↑` de cualquier carpeta del árbol subes **de una vez todos los archivos locales** de esa
+   carpeta y sus subcarpetas, tal como están en disco (sin merge por bloques): los que ya coinciden con el
+   servidor se omiten y el resto se escribe en paralelo, con progreso y un resumen de errores. La vista del
+   archivo que tengas abierto no cambia si mientras tanto te moviste a otro.
 
 ## Actualizaciones
 

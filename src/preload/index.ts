@@ -18,6 +18,9 @@ import type {
   TerminalDataEvent,
   TerminalExitEvent,
   UpdateState,
+  UploadManyRequest,
+  UploadManyResult,
+  UploadProgress,
   UploadRequest,
   UploadResult
 } from '../shared/types'
@@ -110,6 +113,10 @@ const api: AppApi = {
     ): Promise<FilePair> =>
       ipcRenderer.invoke('file:read-pair', serverId, remoteRoot, localRoot, relPath),
     upload: (request: UploadRequest): Promise<UploadResult> => ipcRenderer.invoke('file:upload', request),
+    uploadMany: (request: UploadManyRequest): Promise<UploadManyResult> =>
+      ipcRenderer.invoke('file:upload-many', request),
+    onUploadProgress: (handler: (progress: UploadProgress) => void): (() => void) =>
+      subscribe('evt:upload-progress', handler),
     download: (request: DownloadRequest): Promise<DownloadResult> =>
       ipcRenderer.invoke('file:download', request)
   },

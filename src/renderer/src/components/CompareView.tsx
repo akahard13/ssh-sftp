@@ -52,18 +52,29 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const [browserOpen, setBrowserOpen] = useState(false)
   const [localBrowserOpen, setLocalBrowserOpen] = useState(false)
   const [progress, setProgress] = useState<CompareProgress | null>(null)
+  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [excludeText, setExcludeText] = useState('')
   const [excludeOpen, setExcludeOpen] = useState(false)
   const [listWidth, setListWidth] = useState(LIST_DEFAULT_WIDTH)
   const [listHidden, setListHidden] = useState(false)
   const activeRequest = useRef<string | null>(null)
+  const bulkRequest = useRef<string | null>(null)
+  /** Última ruta abierta, para no volver a ella si el usuario ya se movió. */
+  const activeRelRef = useRef<string | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const listDrag = useRef<{ startX: number; startWidth: number } | null>(null)
 
   useEffect(() => {
     return api.compare.onProgress((incoming) => {
       if (incoming.requestId === activeRequest.current) setProgress(incoming)
+    })
+  }, [])
+
+  useEffect(() => {
+    return api.files.onUploadProgress((incoming) => {
+      if (incoming.requestId !== bulkRequest.current) return
+      setBulk({ done: incoming.done, total: incoming.total })
     })
   }, [])
 
@@ -79,6 +90,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     setResult(null)
     setPair(null)
     setActiveRel(null)
+    activeRelRef.current = null
     setError(null)
     setToast(null)
   }, [profile.id, profile.localRoot, profile.remoteRoot])
@@ -181,6 +193,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
       setResult(compared)
       setPair(null)
       setActiveRel(null)
+      activeRelRef.current = null
       setExpanded(new Set())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo comparar.')
@@ -199,6 +212,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     setError(null)
     setToast(null)
     setActiveRel(entry.relPath)
+    activeRelRef.current = entry.relPath
     setPairLoading(true)
     try {
       const loaded = await api.files.readPair(profile.id, remotePath, localPath, entry.relPath)
@@ -211,24 +225,93 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     }
   }
 
-  const refreshed = (message: string): void => {
+  /**
+   * Rehace la comparación tras subir o descargar. Solo vuelve a cargar el par de
+   * la vista abierta si el usuario sigue en ese mismo archivo; si se movió a otro,
+   * se respeta su selección en vez de devolverlo al anterior.
+   */
+  const refreshAfterChange = async (changedRel: string | null): Promise<void> => {
+    const compared = await runCompareRequest()
+    if (!compared) return
+    setResult(compared)
+    if (!changedRel || activeRelRef.current !== changedRel) return
+    try {
+      const reloaded = await api.files.readPair(profile.id, remotePath, localPath, changedRel)
+      if (activeRelRef.current !== changedRel) return
+      setPair(reloaded)
+    } catch {
+      /* el archivo pudo desaparecer; se deja la vista como está */
+    }
+  }
+
+  const afterFileChange = (message: string, relPath: string): void => {
     setToast(message)
-    void (async () => {
+    void refreshAfterChange(relPath).catch(() => {
+      /* la comparación se puede repetir manualmente */
+    })
+  }
+
+  const uploadDir = async (dirPath: string, dirName: string): Promise<void> => {
+    if (!result) return
+    const prefix = dirPath ? `${dirPath}/` : ''
+    const relPaths = result.entries
+      .filter(
+        (entry) =>
+          entry.relPath.startsWith(prefix) &&
+          entry.localSize !== null &&
+          entry.status !== 'identical' &&
+          entry.status !== 'remote-only'
+      )
+      .map((entry) => entry.relPath)
+
+    if (relPaths.length === 0) {
+      setToast(`No hay archivos locales que subir en "${dirName}".`)
+      return
+    }
+    const confirmed = window.confirm(
+      `Se subirán ${relPaths.length} archivo(s) de "${dirName}" tal como están en local. ` +
+        'Los que ya existan en el servidor se reemplazan con el contenido local. ¿Continuar?'
+    )
+    if (!confirmed) return
+
+    setError(null)
+    setToast(null)
+    const requestId = newRequestId()
+    bulkRequest.current = requestId
+    setBulk({ done: 0, total: relPaths.length })
+    try {
+      const summary = await api.files.uploadMany({
+        requestId,
+        serverId: profile.id,
+        remoteRoot: remotePath,
+        localRoot: localPath,
+        relPaths,
+        backup: false
+      })
+      const parts: string[] = []
+      if (summary.uploaded > 0) parts.push(`${summary.uploaded} archivo(s) subido(s)`)
+      if (summary.skipped > 0) parts.push(`${summary.skipped} sin cambios`)
+      if (summary.errors.length > 0) parts.push(`${summary.errors.length} con error`)
+      setToast(parts.length > 0 ? `${parts.join(' · ')}.` : 'No había nada que subir.')
+      if (summary.errors.length > 0) {
+        const detail = summary.errors
+          .slice(0, 3)
+          .map((item) => `${item.relPath}: ${item.message}`)
+          .join(' | ')
+        const extra = summary.errors.length > 3 ? ' …' : ''
+        setError(`No se pudieron subir ${summary.errors.length} archivo(s): ${detail}${extra}`)
+      }
       try {
-        const compared = await runCompareRequest()
-        if (!compared) return
-        setResult(compared)
-        const refreshed = await api.files.readPair(
-          profile.id,
-          remotePath,
-          localPath,
-          activeRel ?? ''
-        )
-        setPair(refreshed)
+        await refreshAfterChange(activeRelRef.current)
       } catch {
         /* la comparación se puede repetir manualmente */
       }
-    })()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron subir los archivos.')
+    } finally {
+      bulkRequest.current = null
+      setBulk(null)
+    }
   }
 
   return (
@@ -311,6 +394,11 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
 
       {error ? <p className="error-banner">{error}</p> : null}
       {toast ? <p className="ok-banner">{toast}</p> : null}
+      {bulk ? (
+        <p className="ok-banner">
+          Subiendo {bulk.done} de {bulk.total} archivo(s)… no cierres la ventana.
+        </p>
+      ) : null}
 
       <div className="compare-body" ref={bodyRef}>
         {listHidden ? (
@@ -383,6 +471,8 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
                   expanded={expanded}
                   onToggle={toggleDir}
                   onSelect={(entry) => void openFile(entry)}
+                  onUploadDir={(path, name) => void uploadDir(path, name)}
+                  uploading={bulk !== null}
                 />
               ) : null}
               {result && visibleEntries.length === 0 ? (
@@ -416,8 +506,8 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
               remoteRoot={remotePath}
               localRoot={localPath}
               pair={pair}
-              onUploaded={refreshed}
-              onDownloaded={refreshed}
+              onUploaded={afterFileChange}
+              onDownloaded={afterFileChange}
             />
           ) : null}
           {!pairLoading && !pair ? (

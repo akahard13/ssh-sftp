@@ -6,7 +6,9 @@ import type {
   ConnectionStatus,
   LocalDirListing,
   ServerInput,
-  ServerProfile
+  ServerProfile,
+  UploadManyResult,
+  UploadProgress
 } from '../shared/types'
 import {
   appendAudit,
@@ -45,6 +47,7 @@ import {
   remoteStat
 } from './ssh/sftp'
 import { compareDirectories, hashBuffer, MISSING_REMOTE_HASH, readPair } from './ssh/compare'
+import { uploadTargets, type UploadTarget } from './ssh/upload'
 import { writeLocalFile } from './localFiles'
 import {
   asAbsoluteRemotePath,
@@ -61,6 +64,9 @@ const AUTH_METHODS = ['password', 'key', 'agent'] as const
 const MAX_UPLOAD_BYTES = 32 * 1024 * 1024
 const MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
 const MAX_LOCAL_ENTRIES = 2000
+/** Archivos por tanda y subidas simultáneas al subir una carpeta completa. */
+const MAX_UPLOAD_FILES = 500
+const UPLOAD_CONCURRENCY = 4
 
 /** Eventos que el núcleo emite hacia el host (Electron IPC o WebSocket). */
 export type CoreEventChannel =
@@ -70,6 +76,7 @@ export type CoreEventChannel =
   | 'evt:term-data'
   | 'evt:term-exit'
   | 'evt:compare-progress'
+  | 'evt:upload-progress'
 
 export type CoreEmitter = (channel: CoreEventChannel, payload: unknown) => void
 
@@ -447,6 +454,62 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
       })
 
       return { ok: true, bytes: payload.length, remotePath, backupPath }
+    }
+
+    case 'file:upload-many': {
+      const raw = asObject(args[0], 'request')
+      const requestId = asString(raw.requestId, 'requestId', { max: 64 })
+      const profile = requireProfile(raw.serverId)
+      const remoteRootPath = asAbsoluteRemotePath(raw.remoteRoot, 'remoteRoot')
+      const localRootPath = asString(raw.localRoot, 'localRoot', { max: 2048 })
+      const backup = asBoolean(raw.backup, 'backup')
+      if (!Array.isArray(raw.relPaths)) throw new ValidationError('relPaths debe ser una lista.')
+      if (raw.relPaths.length > MAX_UPLOAD_FILES) {
+        throw new ValidationError(`Sube como máximo ${MAX_UPLOAD_FILES} archivos por tanda.`)
+      }
+
+      const seen = new Set<string>()
+      const targets: UploadTarget[] = []
+      for (const value of raw.relPaths) {
+        const relPath = parseRelPath(value)
+        if (seen.has(relPath)) continue
+        seen.add(relPath)
+        const remotePath = posix.join(remoteRootPath, relPath)
+        assertRemoteAllowed(profile, remotePath)
+        targets.push({
+          relPath,
+          remotePath,
+          localPath: join(localRootPath, ...relPath.split('/'))
+        })
+      }
+
+      const sftp = await getSftp(profile.id)
+      let lastEmit = 0
+      const summary = await uploadTargets(sftp, targets, {
+        backup,
+        maxBytes: MAX_UPLOAD_BYTES,
+        concurrency: UPLOAD_CONCURRENCY,
+        onProgress: (done, total) => {
+          const now = Date.now()
+          if (now - lastEmit < 150 && done < total) return
+          lastEmit = now
+          const progress: UploadProgress = { requestId, done, total }
+          emit('evt:upload-progress', progress)
+        }
+      })
+
+      if (summary.uploaded > 0) {
+        await appendAudit({
+          at: new Date().toISOString(),
+          serverId: profile.id,
+          serverName: profile.name,
+          action: 'upload',
+          detail: `${summary.uploaded} archivo(s) desde ${localRootPath}${backup ? ' con respaldo' : ''}`
+        })
+      }
+
+      const result: UploadManyResult = { ok: true, ...summary }
+      return result
     }
 
     case 'file:download': {

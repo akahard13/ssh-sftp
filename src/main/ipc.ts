@@ -23,6 +23,7 @@ const CORE_CHANNELS = [
   'compare:cancel',
   'file:read-pair',
   'file:upload',
+  'file:upload-many',
   'file:download'
 ] as const
 

@@ -164,6 +164,36 @@ export interface UploadResult {
   backupPath: string | null
 }
 
+export interface UploadManyRequest {
+  /** Identifica la tanda para los eventos de progreso. */
+  requestId: string
+  serverId: string
+  remoteRoot: string
+  localRoot: string
+  /** Rutas relativas que se suben tal cual están en el disco local. */
+  relPaths: string[]
+  backup: boolean
+}
+
+export interface UploadManyError {
+  relPath: string
+  message: string
+}
+
+export interface UploadManyResult {
+  ok: boolean
+  uploaded: number
+  skipped: number
+  bytes: number
+  errors: UploadManyError[]
+}
+
+export interface UploadProgress {
+  requestId: string
+  done: number
+  total: number
+}
+
 export interface DownloadRequest {
   serverId: string
   remoteRoot: string

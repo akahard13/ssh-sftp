@@ -23,8 +23,8 @@ interface DiffViewProps {
   remoteRoot: string
   localRoot: string
   pair: FilePair
-  onUploaded: (message: string) => void
-  onDownloaded: (message: string) => void
+  onUploaded: (message: string, relPath: string) => void
+  onDownloaded: (message: string, relPath: string) => void
 }
 
 function formatSize(bytes: number): string {
@@ -56,7 +56,7 @@ export default function DiffView({
     () => new Set(model.hunks.map((hunk) => hunk.id))
   )
   const [showResult, setShowResult] = useState(true)
-  const [backup, setBackup] = useState(true)
+  const [backup, setBackup] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -154,7 +154,7 @@ export default function DiffView({
         relPath: pair.relPath
       })
       setMessage(`Descargado en ${result.localPath} (${formatSize(result.bytes)}).`)
-      onDownloaded(`${pair.relPath} descargado (${formatSize(result.bytes)}).`)
+      onDownloaded(`${pair.relPath} descargado (${formatSize(result.bytes)}).`, pair.relPath)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo descargar el archivo.')
     } finally {
@@ -252,7 +252,7 @@ export default function DiffView({
         backup
       })
       const detail = result.backupPath ? ` Respaldo: ${result.backupPath}` : ''
-      onUploaded(`${pair.relPath} subido (${formatSize(result.bytes)}).${detail}`)
+      onUploaded(`${pair.relPath} subido (${formatSize(result.bytes)}).${detail}`, pair.relPath)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo subir el archivo.')
     } finally {
