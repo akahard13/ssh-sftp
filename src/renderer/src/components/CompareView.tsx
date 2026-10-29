@@ -10,6 +10,7 @@ import type {
 import DiffView from './DiffView'
 import FileTree from './FileTree'
 import LocalPathBrowser from './LocalPathBrowser'
+import QuickOpen from './QuickOpen'
 import RemotePathBrowser from './RemotePathBrowser'
 import { api } from '../lib/api'
 import { buildTree, collectDirPaths } from '../lib/tree'
@@ -56,6 +57,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [excludeText, setExcludeText] = useState('')
   const [excludeOpen, setExcludeOpen] = useState(false)
+  const [quickOpen, setQuickOpen] = useState(false)
   const [listWidth, setListWidth] = useState(LIST_DEFAULT_WIDTH)
   const [listHidden, setListHidden] = useState(false)
   const activeRequest = useRef<string | null>(null)
@@ -63,6 +65,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   /** Última ruta abierta, para no volver a ella si el usuario ya se movió. */
   const activeRelRef = useRef<string | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const listDrag = useRef<{ startX: number; startWidth: number } | null>(null)
 
   useEffect(() => {
@@ -77,6 +80,27 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
       setBulk({ done: incoming.done, total: incoming.total })
     })
   }, [])
+
+  // Ctrl+P (Cmd+P en macOS) abre el buscador de archivos; no se dispara si hay
+  // un explorador de rutas encima, para no dejar dos capas compitiendo.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+      if (event.key.toLowerCase() !== 'p') return
+      event.preventDefault()
+      if (browserOpen || localBrowserOpen) return
+      setQuickOpen(true)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [browserOpen, localBrowserOpen])
+
+  // Mantiene visible la fila activa cuando se elige un archivo desde el buscador.
+  useEffect(() => {
+    if (!activeRel) return
+    const row = listRef.current?.querySelector('.tree-row.file.active')
+    if (row instanceof HTMLElement) row.scrollIntoView({ block: 'nearest' })
+  }, [activeRel, expanded])
 
   useEffect(() => {
     void api.compare.defaults().then(({ defaults, saved }) => {
@@ -93,6 +117,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     activeRelRef.current = null
     setError(null)
     setToast(null)
+    setQuickOpen(false)
   }, [profile.id, profile.localRoot, profile.remoteRoot])
 
   const visibleEntries = useMemo(() => {
@@ -223,6 +248,25 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     } finally {
       setPairLoading(false)
     }
+  }
+
+  /**
+   * Abre el archivo elegido en el buscador: si el filtro "Solo diferencias" lo
+   * ocultaba lo desactiva, despliega sus carpetas y carga el diff.
+   */
+  const openFromSearch = (entry: CompareEntry): void => {
+    setQuickOpen(false)
+    if (onlyChanges && entry.status === 'identical') setOnlyChanges(false)
+    const parents = entry.relPath.split('/').slice(0, -1)
+    if (parents.length > 0) {
+      setExpanded((prev) => {
+        const next = new Set(prev)
+        for (let i = 1; i <= parents.length; i += 1) next.add(parents.slice(0, i).join('/'))
+        return next
+      })
+    }
+    setListHidden(false)
+    void openFile(entry)
   }
 
   /**
@@ -417,11 +461,20 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
           <>
             <div
               className="file-list"
+              ref={listRef}
               style={{ '--list-width': `${listWidth}px` } as CSSProperties}
             >
               <div className="file-list-head">
                 <span>{result ? `${visibleEntries.length} archivo(s)` : 'Sin comparar'}</span>
                 <span className="tree-buttons">
+                  <button
+                    type="button"
+                    className="ghost small"
+                    onClick={() => setQuickOpen(true)}
+                    title="Buscar un archivo por ruta (Ctrl+P)"
+                  >
+                    Buscar
+                  </button>
                   {result ? (
                     <>
                       <button
@@ -511,10 +564,20 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
             />
           ) : null}
           {!pairLoading && !pair ? (
-            <p className="empty-hint">Selecciona un archivo de la lista para ver los cambios.</p>
+            <p className="empty-hint">
+              Selecciona un archivo de la lista o pulsa Ctrl+P para buscarlo.
+            </p>
           ) : null}
         </div>
       </div>
+
+      {quickOpen ? (
+        <QuickOpen
+          entries={result?.entries ?? []}
+          onClose={() => setQuickOpen(false)}
+          onSelect={openFromSearch}
+        />
+      ) : null}
 
       {localBrowserOpen ? (
         <LocalPathBrowser

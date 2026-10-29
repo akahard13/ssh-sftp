@@ -307,6 +307,10 @@ misma terminal, verán y enviarán las mismas pulsaciones.
    **árbol plegable** con el estado de cada archivo (`solo local`, `solo servidor`, `distinto`, `igual`,
    `mismo tamaño`). Cada carpeta muestra cuántas diferencias tiene debajo, así que sabes dónde mirar sin
    desplegar todo; `Expandir` y `Cerrar` abren o pliegan el árbol completo.
+   `Ctrl+P` (o `Cmd+P` en macOS) abre un **buscador de archivos** que filtra por subsecuencia de la ruta,
+   resalta las letras coincidentes y se maneja con `↑`/`↓`, `Enter` y `Esc`; al elegir un archivo se
+   despliegan sus carpetas y se carga el diff. Busca también entre los archivos que el filtro
+   `Solo diferencias` está ocultando (al elegir uno se desactiva el filtro).
    Arrastra el divisor (o usa `←`/`→` con `Shift` para pasos grandes) para **ensanchar o encoger** la
    lista; el botón `«` de la cabecera la **oculta** y el riel `»` de la izquierda la vuelve a mostrar.
    Con el botón **Exclusiones** ajustas qué se ignora antes de comparar: acepta nombres de carpeta o de
