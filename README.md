@@ -328,6 +328,17 @@ misma terminal, verán y enviarán las mismas pulsaciones.
    carpeta y sus subcarpetas, tal como están en disco (sin merge por bloques): los que ya coinciden con el
    servidor se omiten y el resto se escribe en paralelo, con progreso y un resumen de errores. La vista del
    archivo que tengas abierto no cambia si mientras tanto te moviste a otro.
+7. **Subir por rutas**: el botón **Subir por rutas…** abre un cuadro donde pegas **una ruta por línea**
+   (relativas al directorio local o absolutas del equipo; si es una carpeta se expande completa). La lista
+   de carpetas pasa entonces a mostrar **solo esos archivos**, con una casilla por archivo y por carpeta,
+   y las acciones `Todos`, `Ninguno`, `Subir seleccionados` y `Salir` (esta última vuelve a la
+   comparación). Antes de escribir nada, un diálogo de confirmación vuelve a mostrar la lista exacta de
+   archivos y el destino.
+   En esta tanda el respaldo **no** se deja junto al archivo: la versión anterior del servidor se mueve a
+   `backup_files/<fecha>/` **dentro del proyecto remoto** (se crea la carpeta y sus subcarpetas si no
+   existen), conservando la ruta relativa de cada archivo. El respaldo `.bak-<fecha>` junto al archivo se
+   mantiene solo para la subida individual de un archivo con la casilla **Respaldo** marcada.
+
 
 ## Actualizaciones
 
@@ -557,3 +568,6 @@ vite.web.config.ts build del renderer para el servidor
 - El modo servidor está pensado para un operador; no hay cuentas ni permisos por usuario. El token es
   único.
 - La CSP y la validación de `Origin` asumen que el reverse proxy conserva el `Host`.
+- **Subir por rutas** acepta hasta 200 rutas pegadas y 500 archivos por tanda; las rutas fuera del
+  directorio local se rechazan. Los respaldos de `backup_files/<fecha>/` no se limpian solos: bórralos
+  cuando ya no los necesites.

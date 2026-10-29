@@ -172,7 +172,13 @@ export interface UploadManyRequest {
   localRoot: string
   /** Rutas relativas que se suben tal cual están en el disco local. */
   relPaths: string[]
+  /** Crea un `.bak-<fecha>` junto a cada archivo remoto reemplazado. */
   backup: boolean
+  /**
+   * Carpeta, relativa a `remoteRoot`, donde se guarda la versión remota anterior
+   * con la misma estructura de rutas. Sustituye al `.bak` de `backup`.
+   */
+  backupFolder?: string | null
 }
 
 export interface UploadManyError {
@@ -186,6 +192,30 @@ export interface UploadManyResult {
   skipped: number
   bytes: number
   errors: UploadManyError[]
+  /** Carpeta remota donde quedó el respaldo, si se pidió alguno. */
+  backupRoot?: string | null
+}
+
+/** Rutas pegadas por el usuario para listar y subir archivos concretos. */
+export interface PathsRequest {
+  serverId: string
+  remoteRoot: string
+  localRoot: string
+  /** Rutas relativas a `localRoot` o absolutas del equipo local. */
+  paths: string[]
+}
+
+export interface PathsError {
+  /** Ruta tal como la escribió el usuario. */
+  path: string
+  message: string
+}
+
+export interface PathsResult {
+  entries: CompareEntry[]
+  errors: PathsError[]
+  /** Se alcanzó el tope de archivos y quedaron rutas sin procesar. */
+  truncated: boolean
 }
 
 export interface UploadProgress {

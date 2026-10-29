@@ -1,10 +1,13 @@
 import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join, posix, resolve } from 'node:path'
+import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import type {
+  CompareEntry,
   CompareProgress,
   ConnectionStatus,
   LocalDirListing,
+  PathsError,
+  PathsResult,
   ServerInput,
   ServerProfile,
   UploadManyResult,
@@ -39,6 +42,7 @@ import {
   writeShell
 } from './ssh/manager'
 import {
+  alongsideBackupPath,
   assertInsideRoot,
   atomicUpload,
   DEFAULT_EXCLUDES,
@@ -67,6 +71,10 @@ const MAX_LOCAL_ENTRIES = 2000
 /** Archivos por tanda y subidas simultáneas al subir una carpeta completa. */
 const MAX_UPLOAD_FILES = 500
 const UPLOAD_CONCURRENCY = 4
+/** Rutas que acepta una tanda pegada a mano. */
+const MAX_PATH_LINES = 200
+/** Consultas de estado remoto simultáneas al listar rutas. */
+const PATH_STAT_CONCURRENCY = 8
 
 /** Eventos que el núcleo emite hacia el host (Electron IPC o WebSocket). */
 export type CoreEventChannel =
@@ -244,6 +252,113 @@ async function listLocalDirectories(rawPath: unknown): Promise<LocalDirListing> 
     parent: parent === resolved ? null : parent,
     entries
   }
+}
+
+/** Marca de tiempo usada para separar cada tanda de respaldos. */
+function backupStamp(): string {
+  return new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '')
+}
+
+/**
+ * Convierte una ruta escrita a mano (relativa a la raíz local o absoluta) en
+ * una ruta absoluta del equipo que ejecuta el servicio.
+ */
+function resolveLocalTarget(localRoot: string, raw: string): string {
+  const cleaned = raw.trim().replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1')
+  const expanded =
+    cleaned === '~' || cleaned.startsWith('~/') || cleaned.startsWith('~\\')
+      ? join(homedir(), cleaned.slice(1))
+      : cleaned
+  return isAbsolute(expanded) ? resolve(expanded) : resolve(localRoot, expanded)
+}
+
+/** Ruta relativa con `/` si `abs` queda dentro de `root`; null si se sale. */
+function relInsideLocalRoot(root: string, abs: string): string | null {
+  const rel = relative(root, abs)
+  if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`) || /^\.\.[\\/]/.test(rel)) {
+    return null
+  }
+  return rel.split(/[\\/]+/).filter(Boolean).join('/')
+}
+
+interface LocalPathFile {
+  relPath: string
+  size: number
+}
+
+/** Acumula los archivos de una carpeta local, sin seguir enlaces a carpetas. */
+async function walkLocalDir(
+  abs: string,
+  rel: string,
+  out: LocalPathFile[],
+  quota: number
+): Promise<void> {
+  const dirents = await readdir(abs, { withFileTypes: true }).catch(() => [])
+  for (const dirent of dirents) {
+    if (out.length >= quota) return
+    const childAbs = join(abs, dirent.name)
+    const childRel = rel ? `${rel}/${dirent.name}` : dirent.name
+    if (dirent.isDirectory()) {
+      await walkLocalDir(childAbs, childRel, out, quota)
+      continue
+    }
+    if (!dirent.isFile() && !dirent.isSymbolicLink()) continue
+    const info = await stat(childAbs).catch(() => null)
+    if (info?.isFile()) out.push({ relPath: childRel, size: info.size })
+  }
+}
+
+/** Resuelve las rutas pegadas por el usuario en archivos concretos del proyecto. */
+async function resolveLocalPaths(
+  localRoot: string,
+  rawPaths: readonly string[]
+): Promise<{ files: LocalPathFile[]; errors: PathsError[]; truncated: boolean }> {
+  const root = resolve(localRoot)
+  const files: LocalPathFile[] = []
+  const errors: PathsError[] = []
+  const seen = new Set<string>()
+  let truncated = false
+
+  for (const value of rawPaths) {
+    const rawPath = asString(value, 'path', { max: 2048 })
+    if (!rawPath.trim()) continue
+    if (files.length >= MAX_UPLOAD_FILES) {
+      truncated = true
+      break
+    }
+    const abs = resolveLocalTarget(root, rawPath)
+    const rel = relInsideLocalRoot(root, abs)
+    if (rel === null) {
+      errors.push({ path: rawPath.trim(), message: 'Queda fuera del directorio local.' })
+      continue
+    }
+    const info = await stat(abs).catch(() => null)
+    if (!info) {
+      errors.push({ path: rawPath.trim(), message: 'No existe en local.' })
+      continue
+    }
+    const found: LocalPathFile[] = []
+    if (info.isDirectory()) {
+      await walkLocalDir(abs, rel, found, MAX_UPLOAD_FILES - files.length)
+    } else if (info.isFile()) {
+      found.push({ relPath: rel, size: info.size })
+    } else {
+      errors.push({ path: rawPath.trim(), message: 'No es un archivo ni una carpeta.' })
+      continue
+    }
+    if (found.length >= MAX_UPLOAD_FILES - files.length) truncated = true
+    for (const file of found) {
+      if (files.length >= MAX_UPLOAD_FILES) {
+        truncated = true
+        break
+      }
+      if (seen.has(file.relPath)) continue
+      seen.add(file.relPath)
+      files.push(file)
+    }
+  }
+
+  return { files, errors, truncated }
 }
 
 async function runCompare(requestId: string, args: unknown[]): Promise<unknown> {
@@ -444,7 +559,12 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
       const payload = Buffer.from(content, 'utf8')
       if (payload.length > MAX_UPLOAD_BYTES) throw new ValidationError('El contenido excede el tamaño permitido.')
 
-      const { backupPath } = await atomicUpload(sftp, remotePath, payload, backup)
+      const { backupPath } = await atomicUpload(
+        sftp,
+        remotePath,
+        payload,
+        backup ? alongsideBackupPath(remotePath) : null
+      )
       await appendAudit({
         at: new Date().toISOString(),
         serverId: profile.id,
@@ -463,6 +583,19 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
       const remoteRootPath = asAbsoluteRemotePath(raw.remoteRoot, 'remoteRoot')
       const localRootPath = asString(raw.localRoot, 'localRoot', { max: 2048 })
       const backup = asBoolean(raw.backup, 'backup')
+      const backupFolder =
+        raw.backupFolder === undefined || raw.backupFolder === null
+          ? null
+          : asString(raw.backupFolder, 'backupFolder', { max: 120 })
+      if (
+        backupFolder !== null &&
+        (backupFolder.trim().length === 0 ||
+          backupFolder.includes('..') ||
+          backupFolder.includes('\\') ||
+          backupFolder.startsWith('/'))
+      ) {
+        throw new ValidationError('Carpeta de respaldo no permitida.')
+      }
       if (!Array.isArray(raw.relPaths)) throw new ValidationError('relPaths debe ser una lista.')
       if (raw.relPaths.length > MAX_UPLOAD_FILES) {
         throw new ValidationError(`Sube como máximo ${MAX_UPLOAD_FILES} archivos por tanda.`)
@@ -484,9 +617,14 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
       }
 
       const sftp = await getSftp(profile.id)
+      const backupDir =
+        backupFolder !== null
+          ? posix.join(remoteRootPath, backupFolder.trim(), backupStamp())
+          : null
       let lastEmit = 0
       const summary = await uploadTargets(sftp, targets, {
         backup,
+        backupDir,
         maxBytes: MAX_UPLOAD_BYTES,
         concurrency: UPLOAD_CONCURRENCY,
         onProgress: (done, total) => {
@@ -504,11 +642,60 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
           serverId: profile.id,
           serverName: profile.name,
           action: 'upload',
-          detail: `${summary.uploaded} archivo(s) desde ${localRootPath}${backup ? ' con respaldo' : ''}`
+          detail:
+            `${summary.uploaded} archivo(s) desde ${localRootPath}` +
+            (backupDir ? ` con respaldo en ${backupDir}` : backup ? ' con respaldo' : '')
         })
       }
 
       const result: UploadManyResult = { ok: true, ...summary }
+      return result
+    }
+
+    case 'file:list-paths': {
+      const raw = asObject(args[0], 'request')
+      const profile = requireProfile(raw.serverId)
+      const remoteRootPath = asAbsoluteRemotePath(raw.remoteRoot, 'remoteRoot')
+      const localRootPath = asString(raw.localRoot, 'localRoot', { max: 2048 })
+      assertRemoteAllowed(profile, remoteRootPath)
+      if (!Array.isArray(raw.paths)) throw new ValidationError('paths debe ser una lista.')
+      if (raw.paths.length > MAX_PATH_LINES) {
+        throw new ValidationError(`Pega como máximo ${MAX_PATH_LINES} rutas por tanda.`)
+      }
+      const rootInfo = await stat(localRootPath).catch(() => null)
+      if (!rootInfo?.isDirectory()) throw new ValidationError('El directorio local no existe.')
+
+      const { files, errors, truncated } = await resolveLocalPaths(localRootPath, raw.paths)
+      const sftp = await getSftp(profile.id)
+      const entries: CompareEntry[] = new Array(files.length)
+      let cursor = 0
+      const worker = async (): Promise<void> => {
+        for (;;) {
+          const index = cursor
+          cursor += 1
+          const file = files[index]
+          if (!file) return
+          const remote = await remoteStat(sftp, posix.join(remoteRootPath, file.relPath)).catch(
+            () => null
+          )
+          entries[index] = {
+            relPath: file.relPath,
+            status: !remote ? 'local-only' : remote.size === file.size ? 'same-size' : 'modified',
+            isDirectory: false,
+            localSize: file.size,
+            remoteSize: remote ? remote.size : null
+          }
+        }
+      }
+      await Promise.all(
+        Array.from({ length: Math.min(PATH_STAT_CONCURRENCY, files.length) }, () => worker())
+      )
+
+      const result: PathsResult = {
+        entries: [...entries].sort((a, b) => a.relPath.localeCompare(b.relPath)),
+        errors,
+        truncated
+      }
       return result
     }
 

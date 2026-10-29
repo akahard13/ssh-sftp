@@ -12,6 +12,8 @@ import type {
   HostKeyPrompt,
   LocalDirListing,
   OpenTerminalResult,
+  PathsRequest,
+  PathsResult,
   RemoteDir,
   ServerInput,
   ServerProfile,
@@ -115,6 +117,8 @@ const api: AppApi = {
     upload: (request: UploadRequest): Promise<UploadResult> => ipcRenderer.invoke('file:upload', request),
     uploadMany: (request: UploadManyRequest): Promise<UploadManyResult> =>
       ipcRenderer.invoke('file:upload-many', request),
+    listPaths: (request: PathsRequest): Promise<PathsResult> =>
+      ipcRenderer.invoke('file:list-paths', request),
     onUploadProgress: (handler: (progress: UploadProgress) => void): (() => void) =>
       subscribe('evt:upload-progress', handler),
     download: (request: DownloadRequest): Promise<DownloadResult> =>

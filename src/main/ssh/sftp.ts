@@ -373,12 +373,22 @@ export async function listRemoteDirectories(sftp: SFTPWrapper, path: string): Pr
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/** Writes to a temp file in the same directory, then swaps it in. */
+/** Ruta del respaldo que se crea junto al archivo remoto (`.bak-<fecha>`). */
+export function alongsideBackupPath(remotePath: string): string {
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '')
+  return `${remotePath}.bak-${stamp}`
+}
+
+/**
+ * Escribe con un archivo temporal en la misma carpeta y luego lo intercambia.
+ * Si `backupPath` se indica y el archivo ya existía, la versión anterior se mueve
+ * a esa ruta (creando sus carpetas) antes de reemplazarlo.
+ */
 export async function atomicUpload(
   sftp: SFTPWrapper,
   remotePath: string,
   content: Buffer,
-  backup: boolean
+  backupPath: string | null
 ): Promise<{ backupPath: string | null }> {
   const dir = posix.dirname(remotePath)
   const base = posix.basename(remotePath)
@@ -404,9 +414,10 @@ export async function atomicUpload(
 
     await chmodFile(sftp, tmp, mode)
 
-    if (existing && backup) {
-      const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '')
-      const backupPath = `${remotePath}.bak-${stamp}`
+    if (existing && backupPath) {
+      await ensureRemoteDir(sftp, posix.dirname(backupPath))
+      // Un rename sobre un archivo existente falla en OpenSSH: se limpia antes.
+      await unlinkSafe(sftp, backupPath)
       await renamePath(sftp, remotePath, backupPath)
       await renamePath(sftp, tmp, remotePath)
       return { backupPath }

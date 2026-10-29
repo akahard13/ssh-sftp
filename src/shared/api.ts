@@ -12,6 +12,8 @@ import type {
   HostKeyPrompt,
   LocalDirListing,
   OpenTerminalResult,
+  PathsRequest,
+  PathsResult,
   RemoteDir,
   ServerInput,
   ServerProfile,
@@ -95,6 +97,8 @@ export interface AppApi {
     upload(request: UploadRequest): Promise<UploadResult>
     /** Sube el contenido local de varios archivos (por ejemplo, una carpeta entera). */
     uploadMany(request: UploadManyRequest): Promise<UploadManyResult>
+    /** Resuelve rutas pegadas a mano en los archivos locales que contienen. */
+    listPaths(request: PathsRequest): Promise<PathsResult>
     onUploadProgress(handler: (progress: UploadProgress) => void): Unsubscribe
     /** Copia al equipo local un archivo que solo existe en el servidor. */
     download(request: DownloadRequest): Promise<DownloadResult>

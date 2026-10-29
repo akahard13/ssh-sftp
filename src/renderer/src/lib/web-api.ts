@@ -12,6 +12,8 @@ import type {
   HostKeyPrompt,
   LocalDirListing,
   OpenTerminalResult,
+  PathsRequest,
+  PathsResult,
   RemoteDir,
   ServerInput,
   ServerProfile,
@@ -56,6 +58,7 @@ function timeoutFor(method: string): number {
   if (method === 'file:upload' || method === 'file:upload-many' || method === 'file:download') {
     return 10 * 60 * 1000
   }
+  if (method === 'file:list-paths') return 10 * 60 * 1000
   return DEFAULT_TIMEOUT_MS
 }
 
@@ -379,6 +382,7 @@ export function createWebApi(): AppApi {
       upload: (request: UploadRequest) => httpRpc<UploadResult>('file:upload', [request]),
       uploadMany: (request: UploadManyRequest) =>
         httpRpc<UploadManyResult>('file:upload-many', [request]),
+      listPaths: (request: PathsRequest) => httpRpc<PathsResult>('file:list-paths', [request]),
       onUploadProgress: (handler: (progress: UploadProgress) => void) =>
         client.subscribe('evt:upload-progress', handler as Listener),
       download: (request: DownloadRequest) => call<DownloadResult>('file:download', request)

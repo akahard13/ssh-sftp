@@ -754,6 +754,45 @@ select:focus {
   color: #a9b6c7;
 }
 
+.tree-check {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  flex: 0 0 auto;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+/* Barra del modo "rutas pegadas": elegir y subir solo lo marcado. */
+.path-mode-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #141b24;
+  font-size: 11px;
+}
+
+.path-mode-bar .muted {
+  margin-right: auto;
+}
+
+.path-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0c1118;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
 .tree-count {
   margin-left: auto;
   padding-left: 8px;

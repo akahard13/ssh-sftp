@@ -24,6 +24,7 @@ const CORE_CHANNELS = [
   'file:read-pair',
   'file:upload',
   'file:upload-many',
+  'file:list-paths',
   'file:download'
 ] as const
 

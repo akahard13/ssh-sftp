@@ -1,8 +1,9 @@
 import { readFile, stat } from 'node:fs/promises'
+import { posix } from 'node:path'
 import type { SFTPWrapper } from 'ssh2'
 import type { UploadManyError } from '../../shared/types'
 import { hashBuffer } from './compare'
-import { atomicUpload, remoteReadFile, remoteStat } from './sftp'
+import { alongsideBackupPath, atomicUpload, remoteReadFile, remoteStat } from './sftp'
 
 export interface UploadTarget {
   /** Ruta relativa, tal como se muestra en la comparación. */
@@ -12,7 +13,13 @@ export interface UploadTarget {
 }
 
 export interface UploadTargetsOptions {
+  /** Respaldo `.bak-<fecha>` junto a cada archivo remoto reemplazado. */
   backup: boolean
+  /**
+   * Carpeta remota donde se mueve la versión anterior de cada archivo
+   * reemplazado, conservando su ruta relativa.
+   */
+  backupDir?: string | null
   /** Tope por archivo; lo aplica quien llama para no leer archivos enormes. */
   maxBytes: number
   concurrency?: number
@@ -24,6 +31,7 @@ export interface UploadTargetsResult {
   skipped: number
   bytes: number
   errors: UploadManyError[]
+  backupRoot: string | null
 }
 
 const DEFAULT_CONCURRENCY = 4
@@ -39,6 +47,7 @@ export async function uploadTargets(
 ): Promise<UploadTargetsResult> {
   const total = targets.length
   const concurrency = Math.max(1, Math.min(options.concurrency ?? DEFAULT_CONCURRENCY, total))
+  const backupDir = options.backupDir ?? null
   let done = 0
   let cursor = 0
   let uploaded = 0
@@ -66,7 +75,12 @@ export async function uploadTargets(
             continue
           }
         }
-        await atomicUpload(sftp, target.remotePath, payload, options.backup)
+        const backupPath = backupDir
+          ? posix.join(backupDir, target.relPath)
+          : options.backup
+            ? alongsideBackupPath(target.remotePath)
+            : null
+        await atomicUpload(sftp, target.remotePath, payload, backupPath)
         uploaded += 1
         bytes += payload.length
       } catch (err) {
@@ -82,5 +96,5 @@ export async function uploadTargets(
   }
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()))
-  return { uploaded, skipped, bytes, errors }
+  return { uploaded, skipped, bytes, errors, backupRoot: backupDir }
 }

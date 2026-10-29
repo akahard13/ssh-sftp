@@ -10,13 +10,17 @@ import type {
 import DiffView from './DiffView'
 import FileTree from './FileTree'
 import LocalPathBrowser from './LocalPathBrowser'
+import PathListDialog from './PathListDialog'
 import RemotePathBrowser from './RemotePathBrowser'
+import UploadConfirm from './UploadConfirm'
 import { api } from '../lib/api'
 import { buildTree, collectDirPaths } from '../lib/tree'
 
 const LIST_MIN_WIDTH = 140
 const LIST_MAX_RATIO = 0.6
 const LIST_DEFAULT_WIDTH = 300
+/** Carpeta, dentro del proyecto remoto, donde se respalda lo reemplazado. */
+const BACKUP_DIR = 'backup_files'
 
 interface CompareViewProps {
   profile: ServerProfile
@@ -53,6 +57,13 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const [localBrowserOpen, setLocalBrowserOpen] = useState(false)
   const [progress, setProgress] = useState<CompareProgress | null>(null)
   const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null)
+  const [pathsOpen, setPathsOpen] = useState(false)
+  const [pathsBusy, setPathsBusy] = useState(false)
+  /** Archivos resueltos desde las rutas pegadas; null cuando no está activo. */
+  const [pathEntries, setPathEntries] = useState<CompareEntry[] | null>(null)
+  const [pathRaw, setPathRaw] = useState<string[]>([])
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [excludeText, setExcludeText] = useState('')
   const [excludeOpen, setExcludeOpen] = useState(false)
@@ -93,6 +104,9 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     activeRelRef.current = null
     setError(null)
     setToast(null)
+    setPathEntries(null)
+    setPathRaw([])
+    setChecked(new Set())
   }, [profile.id, profile.localRoot, profile.remoteRoot])
 
   const visibleEntries = useMemo(() => {
@@ -102,6 +116,13 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   }, [result, onlyChanges])
 
   const tree = useMemo(() => buildTree(visibleEntries), [visibleEntries])
+
+  const pathMode = pathEntries !== null
+  const pathTree = useMemo(() => (pathEntries ? buildTree(pathEntries) : []), [pathEntries])
+  const selectedPaths = useMemo(
+    () => (pathEntries ?? []).filter((entry) => checked.has(entry.relPath)).map((entry) => entry.relPath),
+    [pathEntries, checked]
+  )
 
   const toggleDir = (path: string): void => {
     setExpanded((prev) => {
@@ -179,6 +200,11 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const runCompare = async (): Promise<void> => {
     setError(null)
     setToast(null)
+    if (pathMode) {
+      setPathEntries(null)
+      setPathRaw([])
+      setChecked(new Set())
+    }
     if (!localPath.trim()) {
       setError('Selecciona un directorio local.')
       return
@@ -314,6 +340,160 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
     }
   }
 
+  const exitPathMode = (): void => {
+    setPathEntries(null)
+    setPathRaw([])
+    setChecked(new Set())
+    setPair(null)
+    setActiveRel(null)
+    activeRelRef.current = null
+  }
+
+  const loadPaths = async (paths: string[]): Promise<void> => {
+    setPathsOpen(false)
+    if (paths.length === 0) return
+    setError(null)
+    setToast(null)
+    if (!localPath.trim()) {
+      setError('Selecciona un directorio local.')
+      return
+    }
+    setPathsBusy(true)
+    try {
+      const loaded = await api.files.listPaths({
+        serverId: profile.id,
+        remoteRoot: remotePath,
+        localRoot: localPath,
+        paths
+      })
+      setPathRaw(paths)
+      setPathEntries(loaded.entries)
+      setChecked(new Set(loaded.entries.map((entry) => entry.relPath)))
+      setExpanded(new Set(collectDirPaths(buildTree(loaded.entries))))
+      setPair(null)
+      setActiveRel(null)
+      activeRelRef.current = null
+      if (loaded.errors.length > 0) {
+        const detail = loaded.errors
+          .slice(0, 3)
+          .map((item) => `${item.path}: ${item.message}`)
+          .join(' | ')
+        const extra = loaded.errors.length > 3 ? ' …' : ''
+        setError(`${loaded.errors.length} ruta(s) no se pudieron leer: ${detail}${extra}`)
+      }
+      if (loaded.truncated) {
+        setToast(
+          `Se listaron los primeros ${loaded.entries.length} archivos; acota las rutas para ver el resto.`
+        )
+      } else if (loaded.entries.length === 0 && loaded.errors.length === 0) {
+        setToast('No se encontraron archivos en esas rutas.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron leer las rutas.')
+    } finally {
+      setPathsBusy(false)
+    }
+  }
+
+  const toggleCheck = (relPath: string): void => {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(relPath)) next.delete(relPath)
+      else next.add(relPath)
+      return next
+    })
+  }
+
+  const toggleDirCheck = (dirPath: string): void => {
+    const prefix = dirPath ? `${dirPath}/` : ''
+    const inside = (pathEntries ?? [])
+      .filter((entry) => entry.relPath.startsWith(prefix))
+      .map((entry) => entry.relPath)
+    const allChecked = inside.length > 0 && inside.every((relPath) => checked.has(relPath))
+    setChecked((prev) => {
+      const next = new Set(prev)
+      for (const relPath of inside) {
+        if (allChecked) next.delete(relPath)
+        else next.add(relPath)
+      }
+      return next
+    })
+  }
+
+  const selectAllPaths = (): void => {
+    setChecked(new Set((pathEntries ?? []).map((entry) => entry.relPath)))
+  }
+
+  const selectNoPaths = (): void => {
+    setChecked(new Set())
+  }
+
+  const uploadPaths = async (relPaths: string[]): Promise<void> => {
+    setConfirmOpen(false)
+    if (relPaths.length === 0) return
+    setError(null)
+    setToast(null)
+    const requestId = newRequestId()
+    bulkRequest.current = requestId
+    setBulk({ done: 0, total: relPaths.length })
+    try {
+      const summary = await api.files.uploadMany({
+        requestId,
+        serverId: profile.id,
+        remoteRoot: remotePath,
+        localRoot: localPath,
+        relPaths,
+        backup: false,
+        backupFolder: BACKUP_DIR
+      })
+      const parts: string[] = []
+      if (summary.uploaded > 0) parts.push(`${summary.uploaded} archivo(s) subido(s)`)
+      if (summary.skipped > 0) parts.push(`${summary.skipped} sin cambios`)
+      if (summary.errors.length > 0) parts.push(`${summary.errors.length} con error`)
+      const where = summary.backupRoot ? ` Respaldo en ${summary.backupRoot}.` : ''
+      setToast(parts.length > 0 ? `${parts.join(' · ')}.${where}` : 'No había nada que subir.')
+      if (summary.errors.length > 0) {
+        const detail = summary.errors
+          .slice(0, 3)
+          .map((item) => `${item.relPath}: ${item.message}`)
+          .join(' | ')
+        const extra = summary.errors.length > 3 ? ' …' : ''
+        setError(`No se pudieron subir ${summary.errors.length} archivo(s): ${detail}${extra}`)
+      }
+      if (pathRaw.length > 0) {
+        const refreshed = await api.files.listPaths({
+          serverId: profile.id,
+          remoteRoot: remotePath,
+          localRoot: localPath,
+          paths: pathRaw
+        })
+        setPathEntries(refreshed.entries)
+        const available = new Set(refreshed.entries.map((entry) => entry.relPath))
+        setChecked((prev) => new Set([...prev].filter((relPath) => available.has(relPath))))
+      }
+      const opened = activeRelRef.current
+      if (opened && relPaths.includes(opened)) {
+        try {
+          setPair(await api.files.readPair(profile.id, remotePath, localPath, opened))
+        } catch {
+          /* el archivo pudo desaparecer; se deja la vista como está */
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron subir los archivos.')
+    } finally {
+      bulkRequest.current = null
+      setBulk(null)
+    }
+  }
+
+  useEffect(() => {
+    if (pathEntries === null) return
+    exitPathMode()
+    // Las rutas pegadas dejan de ser válidas si cambian las raíces.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localPath, remotePath])
+
   return (
     <div className="compare">
       <div className="compare-toolbar">
@@ -357,6 +537,15 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
             </button>
           </div>
         </label>
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => setPathsOpen(true)}
+          disabled={busy || pathsBusy}
+          title="Pega una lista de rutas del proyecto local y elige cuáles subir"
+        >
+          {pathsBusy ? 'Leyendo rutas…' : 'Subir por rutas…'}
+        </button>
         {busy ? (
           <>
             <button type="button" className="ghost" onClick={cancelCompare}>
@@ -420,7 +609,13 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
               style={{ '--list-width': `${listWidth}px` } as CSSProperties}
             >
               <div className="file-list-head">
-                <span>{result ? `${visibleEntries.length} archivo(s)` : 'Sin comparar'}</span>
+                <span>
+                  {pathMode
+                    ? `${pathEntries?.length ?? 0} archivo(s) de ${pathRaw.length} ruta(s)`
+                    : result
+                      ? `${visibleEntries.length} archivo(s)`
+                      : 'Sin comparar'}
+                </span>
                 <span className="tree-buttons">
                   {result ? (
                     <>
@@ -451,34 +646,77 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
                   </button>
                 </span>
               </div>
-              {result?.truncated ? (
+              {pathMode ? (
+                <div className="path-mode-bar">
+                  <span className="muted">
+                    {checked.size} de {pathEntries?.length ?? 0} seleccionado(s)
+                  </span>
+                  <button type="button" className="ghost small" onClick={selectAllPaths}>
+                    Todos
+                  </button>
+                  <button type="button" className="ghost small" onClick={selectNoPaths}>
+                    Ninguno
+                  </button>
+                  <button
+                    type="button"
+                    className="primary small"
+                    onClick={() => setConfirmOpen(true)}
+                    disabled={checked.size === 0 || bulk !== null}
+                  >
+                    Subir seleccionados
+                  </button>
+                  <button type="button" className="ghost small" onClick={exitPathMode}>
+                    Salir
+                  </button>
+                </div>
+              ) : null}
+              {!pathMode && result?.truncated ? (
                 <p className="truncate-warning">
                   Se alcanzó el límite de archivos por lado: puede haber archivos que no aparecen
                   en la lista. Compara carpetas más pequeñas o excluye las pesadas.
                 </p>
               ) : null}
-              {result ? (
+              {!pathMode && result ? (
                 <p className="list-note">
                   {result.excludedDirs.toLocaleString('es')} carpetas y{' '}
                   {result.excludedFiles.toLocaleString('es')} archivos ignorados ·{' '}
                   {result.dirsScanned.toLocaleString('es')} carpetas revisadas
                 </p>
               ) : null}
-              {result && visibleEntries.length > 0 ? (
-                <FileTree
-                  nodes={tree}
-                  activePath={activeRel}
-                  expanded={expanded}
-                  onToggle={toggleDir}
-                  onSelect={(entry) => void openFile(entry)}
-                  onUploadDir={(path, name) => void uploadDir(path, name)}
-                  uploading={bulk !== null}
-                />
-              ) : null}
-              {result && visibleEntries.length === 0 ? (
-                <p className="empty-hint">No hay diferencias.</p>
-              ) : null}
-              {!result ? <p className="empty-hint">Elige las carpetas y pulsa Comparar.</p> : null}
+              {pathMode ? (
+                pathEntries && pathEntries.length > 0 ? (
+                  <FileTree
+                    nodes={pathTree}
+                    activePath={activeRel}
+                    expanded={expanded}
+                    onToggle={toggleDir}
+                    onSelect={(entry) => void openFile(entry)}
+                    checked={checked}
+                    onToggleCheck={toggleCheck}
+                    onToggleDirCheck={toggleDirCheck}
+                  />
+                ) : (
+                  <p className="empty-hint">Ninguna ruta se pudo leer.</p>
+                )
+              ) : (
+                <>
+                  {result && visibleEntries.length > 0 ? (
+                    <FileTree
+                      nodes={tree}
+                      activePath={activeRel}
+                      expanded={expanded}
+                      onToggle={toggleDir}
+                      onSelect={(entry) => void openFile(entry)}
+                      onUploadDir={(path, name) => void uploadDir(path, name)}
+                      uploading={bulk !== null}
+                    />
+                  ) : null}
+                  {result && visibleEntries.length === 0 ? (
+                    <p className="empty-hint">No hay diferencias.</p>
+                  ) : null}
+                  {!result ? <p className="empty-hint">Elige las carpetas y pulsa Comparar.</p> : null}
+                </>
+              )}
             </div>
 
             <div
@@ -515,6 +753,25 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
           ) : null}
         </div>
       </div>
+
+      {pathsOpen ? (
+        <PathListDialog
+          localRoot={localPath}
+          initial={pathRaw.join('\n')}
+          onClose={() => setPathsOpen(false)}
+          onSubmit={(paths) => void loadPaths(paths)}
+        />
+      ) : null}
+
+      {confirmOpen && selectedPaths.length > 0 ? (
+        <UploadConfirm
+          remoteRoot={remotePath}
+          backupFolder={BACKUP_DIR}
+          relPaths={selectedPaths}
+          onClose={() => setConfirmOpen(false)}
+          onConfirm={() => void uploadPaths(selectedPaths)}
+        />
+      ) : null}
 
       {localBrowserOpen ? (
         <LocalPathBrowser
