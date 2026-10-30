@@ -1300,3 +1300,139 @@ select:focus {
     display: none;
   }
 }
+
+/* ---------- Sesiones de despliegue ---------- */
+
+.deploy-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: #121821;
+  font-size: 12px;
+}
+
+.deploy-bar.active {
+  background: #12281a;
+  border-bottom-color: #1f4a2c;
+}
+
+.deploy-bar .muted,
+.deploy-bar span:not(.deploy-dot) {
+  margin-right: auto;
+}
+
+.deploy-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3fb950;
+  box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.18);
+  flex: 0 0 auto;
+}
+
+/* ---------- Datos e historial ---------- */
+
+.sidebar-data {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.data-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.data-section h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.data-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.session-list {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.session-list.tall {
+  max-height: 320px;
+}
+
+.session-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.session-table th,
+.session-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.session-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-weight: 600;
+  z-index: 1;
+}
+
+.session-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.session-row-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.session-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.session-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+
+.session-detail-head .ghost {
+  margin-left: auto;
+}
+
+.mono {
+  font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
+  font-size: 10px;
+  word-break: break-all;
+}
+
+.danger-text {
+  color: #ff9c94;
+}

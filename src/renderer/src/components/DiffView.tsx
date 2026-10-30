@@ -23,6 +23,8 @@ interface DiffViewProps {
   remoteRoot: string
   localRoot: string
   pair: FilePair
+  /** Sesión de despliegue abierta; sin ella no se puede subir. */
+  sessionId: string | null
   onUploaded: (message: string, relPath: string) => void
   onDownloaded: (message: string, relPath: string) => void
 }
@@ -38,6 +40,7 @@ export default function DiffView({
   remoteRoot,
   localRoot,
   pair,
+  sessionId,
   onUploaded,
   onDownloaded
 }: DiffViewProps): JSX.Element {
@@ -238,6 +241,10 @@ export default function DiffView({
   const upload = async (): Promise<void> => {
     setError(null)
     setMessage(null)
+    if (!sessionId) {
+      setError('Inicia una sesión de despliegue antes de subir archivos.')
+      return
+    }
     if (selected.size === 0 && !isNewFile) {
       setError('Selecciona al menos un bloque de cambios.')
       return
@@ -246,6 +253,8 @@ export default function DiffView({
     try {
       const result = await api.files.upload({
         serverId,
+        sessionId,
+        relPath: pair.relPath,
         remotePath: pair.remotePath,
         content: generated,
         expectedRemoteHash: pair.remoteHash,
@@ -289,7 +298,13 @@ export default function DiffView({
             <input type="checkbox" checked={backup} onChange={(e) => setBackup(e.target.checked)} />
             Crear respaldo
           </label>
-          <button type="button" className="primary small" onClick={() => void upload()} disabled={uploading}>
+          <button
+            type="button"
+            className="primary small"
+            onClick={() => void upload()}
+            disabled={uploading || !sessionId}
+            title={sessionId ? undefined : 'Inicia una sesión de despliegue para subir archivos'}
+          >
             {uploading ? 'Subiendo…' : 'Subir seleccionados'}
           </button>
         </div>

@@ -150,6 +150,10 @@ export interface FilePair {
 
 export interface UploadRequest {
   serverId: string
+  /** Sesión de despliegue activa que registra este archivo. */
+  sessionId: string
+  /** Ruta relativa al proyecto local, para el registro de la sesión. */
+  relPath: string
   remotePath: string
   content: string
   /** Hash of the remote file the merge was based on; guards against concurrent edits. */
@@ -168,6 +172,8 @@ export interface UploadManyRequest {
   /** Identifica la tanda para los eventos de progreso. */
   requestId: string
   serverId: string
+  /** Sesión de despliegue activa que registra esta tanda. */
+  sessionId: string
   remoteRoot: string
   localRoot: string
   /** Rutas relativas que se suben tal cual están en el disco local. */
@@ -256,7 +262,16 @@ export interface AuditEvent {
   at: string
   serverId: string
   serverName: string
-  action: 'connect' | 'disconnect' | 'upload' | 'download' | 'hostkey-trusted' | 'hostkey-mismatch'
+  action:
+    | 'connect'
+    | 'disconnect'
+    | 'upload'
+    | 'download'
+    | 'revert'
+    | 'deploy-start'
+    | 'deploy-end'
+    | 'hostkey-trusted'
+    | 'hostkey-mismatch'
   detail: string
 }
 
@@ -276,4 +291,111 @@ export interface UpdateState {
   version?: string
   percent?: number
   message?: string
+}
+
+/** Resultado de cada archivo dentro de una sesión de despliegue. */
+export type DeployFileOutcome = 'uploaded' | 'skipped' | 'error'
+
+export interface DeployFileRecord {
+  /** Identificador estable del registro; se usa para revertir. */
+  id: string
+  /** Ruta relativa a la raíz del proyecto local. */
+  relPath: string
+  remotePath: string
+  localPath: string
+  /** Respaldo remoto con la versión anterior, si se creó uno. */
+  backupPath: string | null
+  /** Momento en que se restauró el archivo desde su respaldo. */
+  revertedAt: string | null
+  /** Bytes escritos en el servidor; 0 si se omitió o falló. */
+  bytes: number
+  outcome: DeployFileOutcome
+  message?: string
+  at: string
+}
+
+/** Resultado de restaurar un archivo del servidor desde su respaldo. */
+export interface DeployRevertResult {
+  ok: boolean
+  remotePath: string
+  restoredFrom: string
+  bytes: number
+  /** Respaldo de la versión que se descartó al revertir, si se pudo crear. */
+  discardedBackup: string | null
+}
+
+export interface DeployTotals {
+  uploaded: number
+  skipped: number
+  errors: number
+  bytes: number
+}
+
+/**
+ * Todo lo subido a un servidor entre «Iniciar sesión de despliegue» y
+ * «Finalizar sesión de despliegue». Se guarda como un JSON por sesión.
+ */
+export interface DeploySession {
+  version: 1
+  id: string
+  serverId: string
+  serverName: string
+  host: string
+  username: string
+  remoteRoot: string
+  localRoot: string
+  startedAt: string
+  endedAt: string | null
+  status: 'active' | 'closed'
+  files: DeployFileRecord[]
+  totals: DeployTotals
+}
+
+/** La sesión sin su lista de archivos, para listar el historial. */
+export type DeploySessionSummary = Omit<DeploySession, 'files'>
+
+export interface DeployStartRequest {
+  serverId: string
+  remoteRoot: string
+  localRoot: string
+}
+
+export interface DeployHistoryBundle {
+  kind: 'deploysync-history'
+  version: 1
+  exportedAt: string
+  sessions: DeploySession[]
+}
+
+export interface DeployImportResult {
+  imported: number
+  skipped: number
+  total: number
+}
+
+/** Servidor exportable: nunca incluye el secreto cifrado ni su estado. */
+export interface ServerConfigEntry {
+  id: string
+  name: string
+  host: string
+  port: number
+  username: string
+  authMethod: AuthMethod
+  privateKeyPath: string | null
+  remoteRoot: string | null
+  localRoot: string | null
+  jumpHost: JumpHost | null
+}
+
+export interface ServerConfigBundle {
+  kind: 'deploysync-config'
+  version: 1
+  exportedAt: string
+  servers: ServerConfigEntry[]
+}
+
+export interface ConfigImportResult {
+  created: number
+  updated: number
+  total: number
 }

@@ -4,6 +4,7 @@ import type {
   CompareEntry,
   CompareProgress,
   CompareResult,
+  DeploySessionSummary,
   FilePair,
   ServerProfile
 } from '../../../shared/types'
@@ -67,6 +68,9 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [excludeText, setExcludeText] = useState('')
   const [excludeOpen, setExcludeOpen] = useState(false)
+  /** Sesión de despliegue abierta; sin ella las subidas se rechazan. */
+  const [deploySession, setDeploySession] = useState<DeploySessionSummary | null>(null)
+  const [sessionBusy, setSessionBusy] = useState(false)
   const [listWidth, setListWidth] = useState(LIST_DEFAULT_WIDTH)
   const [listHidden, setListHidden] = useState(false)
   const activeRequest = useRef<string | null>(null)
@@ -94,6 +98,60 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
       setExcludeText((saved ?? defaults).join(', '))
     })
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    setDeploySession(null)
+    void api.deploy
+      .active(profile.id)
+      .then((active) => {
+        if (!cancelled) setDeploySession(active)
+      })
+      .catch(() => {
+        /* el botón de iniciar sigue disponible */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [profile.id])
+
+  const startDeploySession = async (): Promise<void> => {
+    setError(null)
+    setToast(null)
+    setSessionBusy(true)
+    try {
+      const session = await api.deploy.start({
+        serverId: profile.id,
+        remoteRoot: remotePath,
+        localRoot: localPath
+      })
+      setDeploySession(session)
+      setToast('Sesión de despliegue iniciada. Todo lo que subas quedará en su registro.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo iniciar la sesión de despliegue.')
+    } finally {
+      setSessionBusy(false)
+    }
+  }
+
+  const endDeploySession = async (): Promise<void> => {
+    if (!deploySession) return
+    setError(null)
+    setToast(null)
+    setSessionBusy(true)
+    try {
+      const closed = await api.deploy.end(deploySession.id)
+      setDeploySession(null)
+      setToast(
+        `Sesión de despliegue finalizada: ${closed.totals.uploaded} archivo(s) subido(s). ` +
+          'El registro quedó guardado y se puede exportar desde Datos.'
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo finalizar la sesión de despliegue.')
+    } finally {
+      setSessionBusy(false)
+    }
+  }
 
   useEffect(() => {
     setLocalPath(profile.localRoot ?? '')
@@ -279,6 +337,10 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
 
   const uploadDir = async (dirPath: string, dirName: string): Promise<void> => {
     if (!result) return
+    if (!deploySession) {
+      setError('Inicia una sesión de despliegue antes de subir archivos.')
+      return
+    }
     const prefix = dirPath ? `${dirPath}/` : ''
     const relPaths = result.entries
       .filter(
@@ -309,6 +371,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
       const summary = await api.files.uploadMany({
         requestId,
         serverId: profile.id,
+        sessionId: deploySession.id,
         remoteRoot: remotePath,
         localRoot: localPath,
         relPaths,
@@ -431,6 +494,10 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
   const uploadPaths = async (relPaths: string[]): Promise<void> => {
     setConfirmOpen(false)
     if (relPaths.length === 0) return
+    if (!deploySession) {
+      setError('Inicia una sesión de despliegue antes de subir archivos.')
+      return
+    }
     setError(null)
     setToast(null)
     const requestId = newRequestId()
@@ -440,6 +507,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
       const summary = await api.files.uploadMany({
         requestId,
         serverId: profile.id,
+        sessionId: deploySession.id,
         remoteRoot: remotePath,
         localRoot: localPath,
         relPaths,
@@ -581,6 +649,44 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
         ) : null}
       </div>
 
+      <div className={`deploy-bar ${deploySession ? 'active' : ''}`}>
+        {deploySession ? (
+          <>
+            <span className="deploy-dot" aria-hidden="true" />
+            <span>
+              Sesión de despliegue activa desde las{' '}
+              {new Date(deploySession.startedAt).toLocaleTimeString('es', {
+                hour: '2-digit',
+                minute: '2-digit'
+              })}{' '}
+              · {deploySession.totals.uploaded} archivo(s) subido(s)
+            </span>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={() => void endDeploySession()}
+              disabled={sessionBusy || bulk !== null}
+            >
+              {sessionBusy ? 'Finalizando…' : 'Finalizar sesión de despliegue'}
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="muted">
+              Sin sesión de despliegue: iníciala para poder subir archivos.
+            </span>
+            <button
+              type="button"
+              className="primary small"
+              onClick={() => void startDeploySession()}
+              disabled={sessionBusy}
+            >
+              {sessionBusy ? 'Iniciando…' : 'Iniciar sesión de despliegue'}
+            </button>
+          </>
+        )}
+      </div>
+
       {error ? <p className="error-banner">{error}</p> : null}
       {toast ? <p className="ok-banner">{toast}</p> : null}
       {bulk ? (
@@ -661,7 +767,8 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
                     type="button"
                     className="primary small"
                     onClick={() => setConfirmOpen(true)}
-                    disabled={checked.size === 0 || bulk !== null}
+                    disabled={checked.size === 0 || bulk !== null || !deploySession}
+                    title={deploySession ? undefined : 'Inicia una sesión de despliegue para subir'}
                   >
                     Subir seleccionados
                   </button>
@@ -744,6 +851,7 @@ export default function CompareView({ profile }: CompareViewProps): JSX.Element 
               remoteRoot={remotePath}
               localRoot={localPath}
               pair={pair}
+              sessionId={deploySession?.id ?? null}
               onUploaded={afterFileChange}
               onDownloaded={afterFileChange}
             />

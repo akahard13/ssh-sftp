@@ -5,7 +5,14 @@ import type {
   CompareDefaults,
   CompareProgress,
   CompareResult,
+  ConfigImportResult,
   ConnectionStatus,
+  DeployHistoryBundle,
+  DeployImportResult,
+  DeploySession,
+  DeploySessionSummary,
+  DeployRevertResult,
+  DeployStartRequest,
   DownloadRequest,
   DownloadResult,
   FilePair,
@@ -15,6 +22,7 @@ import type {
   PathsRequest,
   PathsResult,
   RemoteDir,
+  ServerConfigBundle,
   ServerInput,
   ServerProfile,
   TerminalDataEvent,
@@ -44,6 +52,29 @@ const api: AppApi = {
   },
   audit: {
     list: (): Promise<import('../shared/types').AuditEvent[]> => ipcRenderer.invoke('audit:list')
+  },
+  deploy: {
+    active: (serverId: string): Promise<DeploySessionSummary | null> =>
+      ipcRenderer.invoke('deploy:active', serverId),
+    start: (request: DeployStartRequest): Promise<DeploySessionSummary> =>
+      ipcRenderer.invoke('deploy:start', request),
+    end: (sessionId: string): Promise<DeploySessionSummary> =>
+      ipcRenderer.invoke('deploy:end', sessionId),
+    list: (): Promise<DeploySessionSummary[]> => ipcRenderer.invoke('deploy:list'),
+    get: (sessionId: string): Promise<DeploySession | null> =>
+      ipcRenderer.invoke('deploy:get', sessionId),
+    revertFile: (sessionId: string, fileId: string): Promise<DeployRevertResult> =>
+      ipcRenderer.invoke('deploy:revert-file', sessionId, fileId),
+    remove: (sessionId: string): Promise<boolean> => ipcRenderer.invoke('deploy:delete', sessionId),
+    exportHistory: (): Promise<DeployHistoryBundle> =>
+      ipcRenderer.invoke('deploy:export-history'),
+    importHistory: (json: string, replace: boolean): Promise<DeployImportResult> =>
+      ipcRenderer.invoke('deploy:import-history', json, replace)
+  },
+  config: {
+    exportServers: (): Promise<ServerConfigBundle> => ipcRenderer.invoke('config:export'),
+    importServers: (json: string, replace: boolean): Promise<ConfigImportResult> =>
+      ipcRenderer.invoke('config:import', json, replace)
   },
   connection: {
     connect: (serverId: string): Promise<boolean> => ipcRenderer.invoke('conn:connect', serverId),

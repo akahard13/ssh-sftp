@@ -1,10 +1,14 @@
 import { readdir, stat } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import type {
   CompareEntry,
   CompareProgress,
   ConnectionStatus,
+  DeployFileRecord,
+  DeployRevertResult,
+  DeploySession,
   LocalDirListing,
   PathsError,
   PathsResult,
@@ -15,15 +19,27 @@ import type {
 } from '../shared/types'
 import {
   appendAudit,
+  appendDeployRecords,
+  deleteDeploySession,
   deleteServer,
+  endDeploySession,
+  exportDeployHistory,
+  exportServerConfig,
+  getActiveDeploySession,
+  getDeploySession,
   getExcludedDirsSetting,
   flushStore,
   getServer,
+  importDeployHistory,
+  importServerConfig,
   initStore,
   listAudit,
+  listDeploySessions,
   listServers,
+  markDeployFileReverted,
   saveExcludedDirsSetting,
   saveServer,
+  startDeploySession,
   trustHostKey,
   type SecretCodec
 } from './store'
@@ -75,6 +91,8 @@ const UPLOAD_CONCURRENCY = 4
 const MAX_PATH_LINES = 200
 /** Consultas de estado remoto simultáneas al listar rutas. */
 const PATH_STAT_CONCURRENCY = 8
+/** Tope del JSON de historial o configuración que se importa. */
+const MAX_JSON_BYTES = 64 * 1024 * 1024
 
 /** Eventos que el núcleo emite hacia el host (Electron IPC o WebSocket). */
 export type CoreEventChannel =
@@ -164,6 +182,38 @@ function requireProfile(serverId: unknown): ServerProfile {
   const profile = getServer(id)
   if (!profile) throw new ValidationError('Servidor desconocido.')
   return profile
+}
+
+/**
+ * Toda subida necesita una sesión de despliegue abierta del mismo servidor: es
+ * lo que permite reconstruir después qué archivo se subió en cada despliegue.
+ */
+function requireDeploySession(serverId: string, value: unknown): DeploySession {
+  const sessionId = asString(value, 'sessionId', { max: 64 })
+  const session = getDeploySession(sessionId)
+  if (!session) {
+    throw new ValidationError('Inicia una sesión de despliegue antes de subir archivos.')
+  }
+  if (session.status !== 'active') {
+    throw new ValidationError('La sesión de despliegue ya finalizó. Inicia una nueva para subir.')
+  }
+  if (session.serverId !== serverId) {
+    throw new ValidationError('La sesión de despliegue pertenece a otro servidor.')
+  }
+  return session
+}
+
+function deployRecord(input: Omit<DeployFileRecord, 'id' | 'revertedAt' | 'at'>): DeployFileRecord {
+  return { id: randomUUID(), revertedAt: null, ...input, at: new Date().toISOString() }
+}
+
+function parseJsonArgument(value: unknown, field: string): unknown {
+  const text = asString(value, field, { max: MAX_JSON_BYTES, trim: false })
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    throw new ValidationError(`El archivo de ${field} no es un JSON válido.`)
+  }
 }
 
 /** Ruta relativa con `/` y sin segmentos vacíos, `.` ni `..`. */
@@ -502,6 +552,126 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
       return listRemoteDirectories(sftp, target)
     }
 
+    case 'deploy:active': {
+      const serverId = asString(args[0], 'serverId', { max: 64 })
+      return getActiveDeploySession(serverId)
+    }
+
+    case 'deploy:start': {
+      const raw = asObject(args[0], 'request')
+      const profile = requireProfile(raw.serverId)
+      const remoteRootPath = asString(raw.remoteRoot, 'remoteRoot', {
+        max: 2048,
+        allowEmpty: true
+      })
+      const localRootPath = asString(raw.localRoot, 'localRoot', {
+        max: 2048,
+        allowEmpty: true
+      })
+      const session = await startDeploySession(profile, remoteRootPath, localRootPath)
+      await appendAudit({
+        at: new Date().toISOString(),
+        serverId: profile.id,
+        serverName: profile.name,
+        action: 'deploy-start',
+        detail: `sesión ${session.id} (${localRootPath || 'sin raíz local'} → ${remoteRootPath || 'sin raíz remota'})`
+      })
+      return session
+    }
+
+    case 'deploy:end': {
+      const session = await endDeploySession(asString(args[0], 'sessionId', { max: 64 }))
+      const profile = getServer(session.serverId)
+      if (profile) {
+        await appendAudit({
+          at: new Date().toISOString(),
+          serverId: profile.id,
+          serverName: profile.name,
+          action: 'deploy-end',
+          detail: `sesión ${session.id}: ${session.totals.uploaded} archivo(s), ${session.totals.bytes} bytes`
+        })
+      }
+      return session
+    }
+
+    case 'deploy:list':
+      return listDeploySessions()
+
+    case 'deploy:get':
+      return getDeploySession(asString(args[0], 'sessionId', { max: 64 }))
+
+    case 'deploy:revert-file': {
+      const sessionId = asString(args[0], 'sessionId', { max: 64 })
+      const fileId = asString(args[1], 'fileId', { max: 64 })
+      const session = getDeploySession(sessionId)
+      if (!session) throw new ValidationError('La sesión de despliegue no existe.')
+      const record = session.files.find((file) => file.id === fileId)
+      if (!record) throw new ValidationError('Ese archivo no está en el registro de la sesión.')
+      if (!record.backupPath) {
+        throw new ValidationError('Ese archivo se subió sin respaldo: no hay a qué revertir.')
+      }
+
+      const profile = requireProfile(session.serverId)
+      assertRemoteAllowed(profile, record.remotePath)
+      assertRemoteAllowed(profile, record.backupPath)
+      const sftp = await getSftp(profile.id)
+
+      const backupInfo = await remoteStat(sftp, record.backupPath)
+      if (!backupInfo) throw new ValidationError('El respaldo ya no existe en el servidor.')
+      if (backupInfo.size > MAX_DOWNLOAD_BYTES) {
+        throw new ValidationError('El respaldo excede el tamaño permitido para revertir (64 MB).')
+      }
+
+      const payload = await remoteReadFile(sftp, record.backupPath)
+      // La versión desplegada no se pierde: queda como `.bak-<fecha>` nuevo.
+      const written = await atomicUpload(
+        sftp,
+        record.remotePath,
+        payload,
+        alongsideBackupPath(record.remotePath)
+      )
+
+      const at = new Date().toISOString()
+      await markDeployFileReverted(session.id, record.id, at)
+      await appendAudit({
+        at,
+        serverId: profile.id,
+        serverName: profile.name,
+        action: 'revert',
+        detail: `${posix.basename(record.remotePath)} restaurado desde ${record.backupPath} (${payload.length} bytes)`
+      })
+
+      const result: DeployRevertResult = {
+        ok: true,
+        remotePath: record.remotePath,
+        restoredFrom: record.backupPath,
+        bytes: payload.length,
+        discardedBackup: written.backupPath
+      }
+      return result
+    }
+
+    case 'deploy:delete':
+      return deleteDeploySession(asString(args[0], 'sessionId', { max: 64 }))
+
+    case 'deploy:export-history':
+      return exportDeployHistory()
+
+    case 'deploy:import-history':
+      return importDeployHistory(
+        parseJsonArgument(args[0], 'historial'),
+        asBoolean(args[1], 'replace')
+      )
+
+    case 'config:export':
+      return exportServerConfig()
+
+    case 'config:import':
+      return importServerConfig(
+        parseJsonArgument(args[0], 'configuración'),
+        asBoolean(args[1], 'replace')
+      )
+
     case 'compare:defaults':
       return { defaults: [...DEFAULT_EXCLUDES], saved: getExcludedDirsSetting() }
 
@@ -531,6 +701,8 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
     case 'file:upload': {
       const raw = asObject(args[0], 'request')
       const profile = requireProfile(raw.serverId)
+      const session = requireDeploySession(profile.id, raw.sessionId)
+      const relPath = parseRelPath(raw.relPath)
       const remotePath = asAbsoluteRemotePath(raw.remotePath, 'remotePath')
       assertRemoteAllowed(profile, remotePath)
 
@@ -565,6 +737,16 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
         payload,
         backup ? alongsideBackupPath(remotePath) : null
       )
+      await appendDeployRecords(session.id, [
+        deployRecord({
+          relPath,
+          remotePath,
+          localPath: session.localRoot ? join(session.localRoot, ...relPath.split('/')) : '',
+          backupPath,
+          bytes: payload.length,
+          outcome: 'uploaded'
+        })
+      ])
       await appendAudit({
         at: new Date().toISOString(),
         serverId: profile.id,
@@ -580,6 +762,7 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
       const raw = asObject(args[0], 'request')
       const requestId = asString(raw.requestId, 'requestId', { max: 64 })
       const profile = requireProfile(raw.serverId)
+      const session = requireDeploySession(profile.id, raw.sessionId)
       const remoteRootPath = asAbsoluteRemotePath(raw.remoteRoot, 'remoteRoot')
       const localRootPath = asString(raw.localRoot, 'localRoot', { max: 2048 })
       const backup = asBoolean(raw.backup, 'backup')
@@ -647,6 +830,21 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
             (backupDir ? ` con respaldo en ${backupDir}` : backup ? ' con respaldo' : '')
         })
       }
+
+      await appendDeployRecords(
+        session.id,
+        summary.files.map((file) =>
+          deployRecord({
+            relPath: file.relPath,
+            remotePath: file.remotePath,
+            localPath: file.localPath,
+            backupPath: file.backupPath,
+            bytes: file.bytes,
+            outcome: file.outcome,
+            ...(file.message ? { message: file.message } : {})
+          })
+        )
+      )
 
       const result: UploadManyResult = { ok: true, ...summary }
       return result
