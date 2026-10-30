@@ -12,6 +12,7 @@ const CORE_CHANNELS = [
   'deploy:end',
   'deploy:list',
   'deploy:get',
+  'deploy:revert-file',
   'deploy:delete',
   'deploy:export-history',
   'deploy:import-history',

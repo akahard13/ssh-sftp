@@ -11,6 +11,7 @@ import type {
   DeployImportResult,
   DeploySession,
   DeploySessionSummary,
+  DeployRevertResult,
   DeployStartRequest,
   DownloadRequest,
   DownloadResult,
@@ -57,6 +58,8 @@ export interface AppApi {
     end(sessionId: string): Promise<DeploySessionSummary>
     list(): Promise<DeploySessionSummary[]>
     get(sessionId: string): Promise<DeploySession | null>
+    /** Restaura en el servidor la versión guardada en el respaldo del archivo. */
+    revertFile(sessionId: string, fileId: string): Promise<DeployRevertResult>
     remove(sessionId: string): Promise<boolean>
     /** Consolida todas las sesiones en un único JSON exportable. */
     exportHistory(): Promise<DeployHistoryBundle>

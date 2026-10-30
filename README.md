@@ -326,9 +326,9 @@ misma terminal, verán y enviarán las mismas pulsaciones.
    Pulsa **Iniciar sesión de despliegue** antes de subir: sin sesión activa el núcleo rechaza cualquier
    subida (`Inicia una sesión de despliegue antes de subir archivos.`) y los botones de subida quedan
    deshabilitados. Cada sesión se guarda como un JSON propio en `<data-dir>/deploy-sessions/` con la
-   fecha, el servidor, las raíces y una entrada por archivo (subido, sin cambios o con error). Al acabar,
-   pulsa **Finalizar sesión de despliegue**; si la app se reinicia, la sesión abierta se cierra sola para
-   no bloquear las subidas nuevas.
+   fecha, el servidor, las raíces y una entrada por archivo (subido, sin cambios o con error) con su ruta
+   de destino y la del respaldo. Al acabar, pulsa **Finalizar sesión de despliegue**; si la app se
+   reinicia, la sesión abierta se cierra sola para no bloquear las subidas nuevas.
 7. **Subir**: `Subir seleccionados` escribe en el servidor solo los bloques marcados, de forma atómica y
    con respaldo opcional (desmarcado por defecto). Si el archivo es nuevo y su carpeta tampoco existe en
    el servidor, se crea la carpeta (y sus padres) antes de escribir.
@@ -353,7 +353,11 @@ misma terminal, verán y enviarán las mismas pulsaciones.
 El botón **Datos e historial** de la barra lateral abre dos bloques:
 
 - **Historial de despliegues**: lista las sesiones (fecha, servidor, archivos subidos, sin cambios y con
-  error, tamaño y estado). `Ver` abre el detalle archivo por archivo y `Borrar` elimina el registro.
+  error, tamaño y estado). `Ver` abre el detalle archivo por archivo —con la ruta de destino y la del
+  respaldo— y `Borrar` elimina el registro.
+  Cada archivo subido con respaldo tiene un botón **Revertir**: restaura en el servidor la versión guardada
+  en el `.bak` (o en `backup_files/<fecha>/`) y deja la versión desplegada como un `.bak-<fecha>` nuevo, así
+  que la operación también se puede deshacer. Los archivos sin respaldo no se pueden revertir.
   **Exportar historial (JSON)** genera un único archivo consolidado con todas las sesiones y
   **Importar historial…** lo carga de vuelta; por defecto omite las sesiones que ya existen y con
   *Reemplazar el historial actual* sustituye el historial completo.
@@ -592,6 +596,8 @@ vite.web.config.ts build del renderer para el servidor
   origen. Al importar un servidor nuevo hay que escribirlas otra vez.
 - Si la app se cierra o reinicia con una sesión de despliegue abierta, esa sesión se cierra sola al
   arrancar; las subidas siguientes piden iniciar una nueva.
+- Solo se pueden revertir los archivos que se subieron con respaldo (`.bak-<fecha>` o
+  `backup_files/<fecha>/`). Si el respaldo se borró del servidor, la reversión falla con un aviso.
 - En el modo web, "local" significa **el disco del equipo que ejecuta el servicio**, no el del navegador.
   Para desplegar desde tu portátil, ejecuta el modo servidor en tu portátil o monta el proyecto en el
   host del servicio.

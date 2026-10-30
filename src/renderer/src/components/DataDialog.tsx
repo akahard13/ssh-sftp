@@ -42,6 +42,7 @@ export default function DataDialog({ onClose, onServersChanged }: DataDialogProp
   const [replaceConfig, setReplaceConfig] = useState(false)
   const [detail, setDetail] = useState<DeploySession | null>(null)
   const [detailBusy, setDetailBusy] = useState<string | null>(null)
+  const [reverting, setReverting] = useState<string | null>(null)
   const historyInput = useRef<HTMLInputElement>(null)
   const configInput = useRef<HTMLInputElement>(null)
 
@@ -152,6 +153,33 @@ export default function DataDialog({ onClose, onServersChanged }: DataDialogProp
       fail(err, 'No se pudo leer la sesión.')
     } finally {
       setDetailBusy(null)
+    }
+  }
+
+  const revertFile = async (session: DeploySession, file: DeployFileRecord): Promise<void> => {
+    if (
+      !window.confirm(
+        `Se restaurará "${file.relPath}" en el servidor desde su respaldo:\n${file.backupPath}\n\n` +
+          'La versión actual se guardará como un .bak nuevo. ¿Continuar?'
+      )
+    ) {
+      return
+    }
+    setError(null)
+    setMessage(null)
+    setReverting(file.id)
+    try {
+      const result = await api.deploy.revertFile(session.id, file.id)
+      setMessage(
+        `"${file.relPath}" restaurado desde el respaldo (${formatBytes(result.bytes)}).` +
+          (result.discardedBackup ? ` La versión desplegada quedó en ${result.discardedBackup}.` : '')
+      )
+      setDetail(await api.deploy.get(session.id))
+      await refresh()
+    } catch (err) {
+      fail(err, 'No se pudo revertir el archivo.')
+    } finally {
+      setReverting(null)
     }
   }
 
@@ -319,22 +347,43 @@ export default function DataDialog({ onClose, onServersChanged }: DataDialogProp
                     <tr>
                       <th>Archivo</th>
                       <th>Destino</th>
+                      <th>Respaldo</th>
                       <th>Resultado</th>
                       <th>Tamaño</th>
                       <th>Hora</th>
+                      <th />
                     </tr>
                   </thead>
                   <tbody>
                     {detail.files.map((file, index) => (
-                      <tr key={`${file.relPath}-${index}`}>
+                      <tr key={`${file.id}-${index}`}>
                         <td>{file.relPath}</td>
                         <td className="mono">{file.remotePath}</td>
+                        <td className="mono" title={file.backupPath ?? undefined}>
+                          {file.backupPath ?? '—'}
+                        </td>
                         <td className={file.outcome === 'error' ? 'danger-text' : undefined}>
                           {OUTCOME_LABEL[file.outcome]}
                           {file.message ? `: ${file.message}` : ''}
+                          {file.revertedAt ? (
+                            <span className="muted"> · revertido {formatDate(file.revertedAt)}</span>
+                          ) : null}
                         </td>
                         <td>{formatBytes(file.bytes)}</td>
                         <td>{new Date(file.at).toLocaleTimeString('es')}</td>
+                        <td className="session-row-actions">
+                          {file.outcome === 'uploaded' && file.backupPath ? (
+                            <button
+                              type="button"
+                              className="ghost small"
+                              onClick={() => void revertFile(detail, file)}
+                              disabled={reverting !== null}
+                              title={`Restaurar en el servidor desde ${file.backupPath}`}
+                            >
+                              {reverting === file.id ? 'Revirtiendo…' : 'Revertir'}
+                            </button>
+                          ) : null}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

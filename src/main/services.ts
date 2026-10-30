@@ -1,4 +1,5 @@
 import { readdir, stat } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import type {
@@ -6,6 +7,7 @@ import type {
   CompareProgress,
   ConnectionStatus,
   DeployFileRecord,
+  DeployRevertResult,
   DeploySession,
   LocalDirListing,
   PathsError,
@@ -34,6 +36,7 @@ import {
   listAudit,
   listDeploySessions,
   listServers,
+  markDeployFileReverted,
   saveExcludedDirsSetting,
   saveServer,
   startDeploySession,
@@ -200,8 +203,8 @@ function requireDeploySession(serverId: string, value: unknown): DeploySession {
   return session
 }
 
-function deployRecord(input: Omit<DeployFileRecord, 'at'>): DeployFileRecord {
-  return { ...input, at: new Date().toISOString() }
+function deployRecord(input: Omit<DeployFileRecord, 'id' | 'revertedAt' | 'at'>): DeployFileRecord {
+  return { id: randomUUID(), revertedAt: null, ...input, at: new Date().toISOString() }
 }
 
 function parseJsonArgument(value: unknown, field: string): unknown {
@@ -597,6 +600,57 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
     case 'deploy:get':
       return getDeploySession(asString(args[0], 'sessionId', { max: 64 }))
 
+    case 'deploy:revert-file': {
+      const sessionId = asString(args[0], 'sessionId', { max: 64 })
+      const fileId = asString(args[1], 'fileId', { max: 64 })
+      const session = getDeploySession(sessionId)
+      if (!session) throw new ValidationError('La sesión de despliegue no existe.')
+      const record = session.files.find((file) => file.id === fileId)
+      if (!record) throw new ValidationError('Ese archivo no está en el registro de la sesión.')
+      if (!record.backupPath) {
+        throw new ValidationError('Ese archivo se subió sin respaldo: no hay a qué revertir.')
+      }
+
+      const profile = requireProfile(session.serverId)
+      assertRemoteAllowed(profile, record.remotePath)
+      assertRemoteAllowed(profile, record.backupPath)
+      const sftp = await getSftp(profile.id)
+
+      const backupInfo = await remoteStat(sftp, record.backupPath)
+      if (!backupInfo) throw new ValidationError('El respaldo ya no existe en el servidor.')
+      if (backupInfo.size > MAX_DOWNLOAD_BYTES) {
+        throw new ValidationError('El respaldo excede el tamaño permitido para revertir (64 MB).')
+      }
+
+      const payload = await remoteReadFile(sftp, record.backupPath)
+      // La versión desplegada no se pierde: queda como `.bak-<fecha>` nuevo.
+      const written = await atomicUpload(
+        sftp,
+        record.remotePath,
+        payload,
+        alongsideBackupPath(record.remotePath)
+      )
+
+      const at = new Date().toISOString()
+      await markDeployFileReverted(session.id, record.id, at)
+      await appendAudit({
+        at,
+        serverId: profile.id,
+        serverName: profile.name,
+        action: 'revert',
+        detail: `${posix.basename(record.remotePath)} restaurado desde ${record.backupPath} (${payload.length} bytes)`
+      })
+
+      const result: DeployRevertResult = {
+        ok: true,
+        remotePath: record.remotePath,
+        restoredFrom: record.backupPath,
+        bytes: payload.length,
+        discardedBackup: written.backupPath
+      }
+      return result
+    }
+
     case 'deploy:delete':
       return deleteDeploySession(asString(args[0], 'sessionId', { max: 64 }))
 
@@ -688,6 +742,7 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
           relPath,
           remotePath,
           localPath: session.localRoot ? join(session.localRoot, ...relPath.split('/')) : '',
+          backupPath,
           bytes: payload.length,
           outcome: 'uploaded'
         })
@@ -783,6 +838,7 @@ export async function invokeCore(method: string, args: unknown[]): Promise<unkno
             relPath: file.relPath,
             remotePath: file.remotePath,
             localPath: file.localPath,
+            backupPath: file.backupPath,
             bytes: file.bytes,
             outcome: file.outcome,
             ...(file.message ? { message: file.message } : {})

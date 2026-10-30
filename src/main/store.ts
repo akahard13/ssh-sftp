@@ -309,10 +309,17 @@ function sanitizeRecord(value: unknown): DeployFileRecord | null {
       ? Math.floor(raw.bytes)
       : 0
   const message = optionalText(raw.message, 500)
+  const backupPath = optionalText(raw.backupPath, 4096)
   return {
+    id: isValidId(raw.id) ? raw.id : randomUUID(),
     relPath,
     remotePath: text(raw.remotePath, 4096),
     localPath: text(raw.localPath, 4096),
+    backupPath,
+    revertedAt:
+      raw.revertedAt === null || raw.revertedAt === undefined
+        ? null
+        : isoDate(raw.revertedAt, new Date().toISOString()),
     bytes,
     outcome,
     ...(message ? { message } : {}),
@@ -508,6 +515,27 @@ export async function appendDeployRecords(
   session.totals.skipped += totals.skipped
   session.totals.errors += totals.errors
   session.totals.bytes += totals.bytes
+  await writeSessionFile(session)
+}
+
+export function getDeployFileRecord(
+  sessionId: string,
+  fileId: string
+): DeployFileRecord | null {
+  const session = deploySessions.get(sessionId)
+  const record = session?.files.find((file) => file.id === fileId)
+  return record ? { ...record } : null
+}
+
+export async function markDeployFileReverted(
+  sessionId: string,
+  fileId: string,
+  at: string
+): Promise<void> {
+  const session = deploySessions.get(sessionId)
+  const record = session?.files.find((file) => file.id === fileId)
+  if (!session || !record) return
+  record.revertedAt = at
   await writeSessionFile(session)
 }
 

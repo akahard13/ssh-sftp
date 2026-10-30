@@ -11,6 +11,7 @@ import type {
   DeployImportResult,
   DeploySession,
   DeploySessionSummary,
+  DeployRevertResult,
   DeployStartRequest,
   DownloadRequest,
   DownloadResult,
@@ -62,6 +63,8 @@ const api: AppApi = {
     list: (): Promise<DeploySessionSummary[]> => ipcRenderer.invoke('deploy:list'),
     get: (sessionId: string): Promise<DeploySession | null> =>
       ipcRenderer.invoke('deploy:get', sessionId),
+    revertFile: (sessionId: string, fileId: string): Promise<DeployRevertResult> =>
+      ipcRenderer.invoke('deploy:revert-file', sessionId, fileId),
     remove: (sessionId: string): Promise<boolean> => ipcRenderer.invoke('deploy:delete', sessionId),
     exportHistory: (): Promise<DeployHistoryBundle> =>
       ipcRenderer.invoke('deploy:export-history'),

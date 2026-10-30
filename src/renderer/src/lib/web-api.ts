@@ -11,6 +11,7 @@ import type {
   DeployImportResult,
   DeploySession,
   DeploySessionSummary,
+  DeployRevertResult,
   DeployStartRequest,
   DownloadRequest,
   DownloadResult,
@@ -334,6 +335,8 @@ export function createWebApi(): AppApi {
       end: (sessionId: string) => call<DeploySessionSummary>('deploy:end', sessionId),
       list: () => call<DeploySessionSummary[]>('deploy:list'),
       get: (sessionId: string) => httpRpc<DeploySession | null>('deploy:get', [sessionId]),
+      revertFile: (sessionId: string, fileId: string) =>
+        call<DeployRevertResult>('deploy:revert-file', sessionId, fileId),
       remove: (sessionId: string) => call<boolean>('deploy:delete', sessionId),
       exportHistory: () => httpRpc<DeployHistoryBundle>('deploy:export-history', []),
       importHistory: (json: string, replace: boolean) =>

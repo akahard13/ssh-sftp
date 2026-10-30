@@ -33,6 +33,8 @@ export interface UploadOutcome {
   bytes: number
   outcome: 'uploaded' | 'skipped' | 'error'
   message?: string
+  /** Respaldo remoto realmente creado con la versión anterior. */
+  backupPath: string | null
 }
 
 export interface UploadTargetsResult {
@@ -89,7 +91,8 @@ export async function uploadTargets(
               remotePath: target.remotePath,
               localPath: target.localPath,
               bytes: 0,
-              outcome: 'skipped'
+              outcome: 'skipped',
+              backupPath: null
             })
             continue
           }
@@ -99,7 +102,7 @@ export async function uploadTargets(
           : options.backup
             ? alongsideBackupPath(target.remotePath)
             : null
-        await atomicUpload(sftp, target.remotePath, payload, backupPath)
+        const written = await atomicUpload(sftp, target.remotePath, payload, backupPath)
         uploaded += 1
         bytes += payload.length
         files.push({
@@ -107,7 +110,8 @@ export async function uploadTargets(
           remotePath: target.remotePath,
           localPath: target.localPath,
           bytes: payload.length,
-          outcome: 'uploaded'
+          outcome: 'uploaded',
+          backupPath: written.backupPath
         })
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error desconocido.'
@@ -118,7 +122,8 @@ export async function uploadTargets(
           localPath: target.localPath,
           bytes: 0,
           outcome: 'error',
-          message
+          message,
+          backupPath: null
         })
       } finally {
         done += 1

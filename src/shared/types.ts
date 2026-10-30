@@ -267,6 +267,7 @@ export interface AuditEvent {
     | 'disconnect'
     | 'upload'
     | 'download'
+    | 'revert'
     | 'deploy-start'
     | 'deploy-end'
     | 'hostkey-trusted'
@@ -296,15 +297,31 @@ export interface UpdateState {
 export type DeployFileOutcome = 'uploaded' | 'skipped' | 'error'
 
 export interface DeployFileRecord {
+  /** Identificador estable del registro; se usa para revertir. */
+  id: string
   /** Ruta relativa a la raíz del proyecto local. */
   relPath: string
   remotePath: string
   localPath: string
+  /** Respaldo remoto con la versión anterior, si se creó uno. */
+  backupPath: string | null
+  /** Momento en que se restauró el archivo desde su respaldo. */
+  revertedAt: string | null
   /** Bytes escritos en el servidor; 0 si se omitió o falló. */
   bytes: number
   outcome: DeployFileOutcome
   message?: string
   at: string
+}
+
+/** Resultado de restaurar un archivo del servidor desde su respaldo. */
+export interface DeployRevertResult {
+  ok: boolean
+  remotePath: string
+  restoredFrom: string
+  bytes: number
+  /** Respaldo de la versión que se descartó al revertir, si se pudo crear. */
+  discardedBackup: string | null
 }
 
 export interface DeployTotals {
