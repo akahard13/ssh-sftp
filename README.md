@@ -218,8 +218,9 @@ shell y en la lista de procesos; prefiere la variable `DEPLOYSYNC_TOKEN`.
 | Windows | `%APPDATA%\deploysync` |
 
 Contenido: `profiles.json`, `secrets.json`, `known_hosts.json`, `settings.json`, `audit.json`,
-`server-token` y `secret.key`. El escritorio Electron usa su propio directorio de usuario; el modo
-servidor no lee esa carpeta salvo que le pases `--data-dir`.
+`deploy-sessions/` (un JSON por sesión de despliegue), `server-token` y `secret.key`. El escritorio
+Electron usa su propio directorio de usuario; el modo servidor no lee esa carpeta salvo que le pases
+`--data-dir`.
 
 Los secretos del modo servidor se cifran con **AES-256-GCM**. Protege `secrets.json` frente a copias
 sueltas, pero la llave vive en el mismo directorio: quien pueda leer toda la carpeta (o ejecutar como el
@@ -321,14 +322,21 @@ misma terminal, verán y enviarán las mismas pulsaciones.
    copia a tu directorio local respetando la ruta relativa (crea las carpetas que falten y nunca
    sobrescribe un archivo existente). Los binarios y los archivos grandes no se previsualizan, pero se
    pueden descargar igual (hasta 64 MB).
-6. **Subir**: `Subir seleccionados` escribe en el servidor solo los bloques marcados, de forma atómica y
+6. **Sesión de despliegue (obligatoria)**: la barra bajo la comparación dice si hay una sesión abierta.
+   Pulsa **Iniciar sesión de despliegue** antes de subir: sin sesión activa el núcleo rechaza cualquier
+   subida (`Inicia una sesión de despliegue antes de subir archivos.`) y los botones de subida quedan
+   deshabilitados. Cada sesión se guarda como un JSON propio en `<data-dir>/deploy-sessions/` con la
+   fecha, el servidor, las raíces y una entrada por archivo (subido, sin cambios o con error). Al acabar,
+   pulsa **Finalizar sesión de despliegue**; si la app se reinicia, la sesión abierta se cierra sola para
+   no bloquear las subidas nuevas.
+7. **Subir**: `Subir seleccionados` escribe en el servidor solo los bloques marcados, de forma atómica y
    con respaldo opcional (desmarcado por defecto). Si el archivo es nuevo y su carpeta tampoco existe en
    el servidor, se crea la carpeta (y sus padres) antes de escribir.
    Con el botón `↑` de cualquier carpeta del árbol subes **de una vez todos los archivos locales** de esa
    carpeta y sus subcarpetas, tal como están en disco (sin merge por bloques): los que ya coinciden con el
    servidor se omiten y el resto se escribe en paralelo, con progreso y un resumen de errores. La vista del
    archivo que tengas abierto no cambia si mientras tanto te moviste a otro.
-7. **Subir por rutas**: el botón **Subir por rutas…** abre un cuadro donde pegas **una ruta por línea**
+8. **Subir por rutas**: el botón **Subir por rutas…** abre un cuadro donde pegas **una ruta por línea**
    (relativas al directorio local o absolutas del equipo; si es una carpeta se expande completa). La lista
    de carpetas pasa entonces a mostrar **solo esos archivos**, con una casilla por archivo y por carpeta,
    y las acciones `Todos`, `Ninguno`, `Subir seleccionados` y `Salir` (esta última vuelve a la
@@ -338,6 +346,25 @@ misma terminal, verán y enviarán las mismas pulsaciones.
    `backup_files/<fecha>/` **dentro del proyecto remoto** (se crea la carpeta y sus subcarpetas si no
    existen), conservando la ruta relativa de cada archivo. El respaldo `.bak-<fecha>` junto al archivo se
    mantiene solo para la subida individual de un archivo con la casilla **Respaldo** marcada.
+
+
+## Historial de despliegues, exportar e importar
+
+El botón **Datos e historial** de la barra lateral abre dos bloques:
+
+- **Historial de despliegues**: lista las sesiones (fecha, servidor, archivos subidos, sin cambios y con
+  error, tamaño y estado). `Ver` abre el detalle archivo por archivo y `Borrar` elimina el registro.
+  **Exportar historial (JSON)** genera un único archivo consolidado con todas las sesiones y
+  **Importar historial…** lo carga de vuelta; por defecto omite las sesiones que ya existen y con
+  *Reemplazar el historial actual* sustituye el historial completo.
+- **Configuración de servidores**: **Exportar configuración (JSON)** guarda nombre, host, puerto, usuario,
+  método de autenticación, rutas y bastión de cada servidor. **Importar configuración…** los vuelve a dar
+  de alta por `id` o, si no coincide, por host + puerto + usuario; con *Reemplazar los servidores
+  actuales* se eliminan los que no estén en el archivo. Las contraseñas y passphrases **no** se exportan
+  (están cifradas para el equipo de origen y no son portables): hay que escribirlas otra vez al conectar.
+
+La descarga y la carga del JSON funcionan igual en el escritorio y en el modo servidor, porque el
+navegador se encarga del archivo.
 
 
 ## Actualizaciones
@@ -493,7 +520,7 @@ src/
     services.ts    dispatcher único de operaciones (IPC y HTTP/WebSocket)
     secret.ts      codec de secretos del escritorio (safeStorage)
     updater.ts     auto-actualización de escritorio (electron-updater)
-    store.ts       perfiles, secretos cifrados, known_hosts y auditoría
+    store.ts       perfiles, secretos cifrados, known_hosts, auditoría y sesiones de despliegue
     validate.ts    validadores de entrada
     ssh/
       manager.ts   pool de sesiones, canales, host key y 2FA
@@ -508,8 +535,8 @@ src/
     open.ts        apertura del navegador
 src/preload/       puente seguro (contextBridge) hacia el renderer
 src/renderer/      interfaz React compartida
-  src/lib/         motor de diff, merge y cliente WebSocket del modo servidor
-  src/components   Sidebar, Terminal, Comparar, Diff, explorador de rutas y actualizaciones
+  src/lib/         motor de diff, merge, cliente WebSocket y descarga de JSON
+  src/components   Sidebar, Terminal, Comparar, Diff, datos/historial, exploradores y actualizaciones
 src/shared/        tipos y contrato de la API
 tools/             pruebas de diff, recorrido, árbol y servidor
 scripts/install.sh instalador de curl
@@ -539,6 +566,9 @@ vite.web.config.ts build del renderer para el servidor
   de carpetas**, con `*` y `?` como comodines; un patrón sin `/` compara contra el nombre y con `/` contra
   la ruta relativa. El número de carpetas y archivos ignorados se muestra en la lista.
 - **SFTP no notifica cambios**: el árbol se refresca al comparar o al subir; no hay vigilancia remota.
+- **Sesiones de despliegue explícitas**: ninguna subida ocurre fuera de una sesión que el usuario inicia y
+  finaliza. Aporta trazabilidad (un JSON por sesión, con el resultado de cada archivo) y evita que un clic
+  accidental publique cambios: el núcleo valida la sesión —servidor y estado— antes de tocar el SFTP.
 - **WebSocket para el navegador**: el RPC y los eventos (terminal, progreso, prompts de host key y 2FA)
   viajan por una sola conexión bidireccional; la terminal no sufre la latencia de un POST por tecla.
 
@@ -558,6 +588,10 @@ vite.web.config.ts build del renderer para el servidor
   Ajustar las exclusiones es la forma más rápida de bajar el conteo.
 - El bastión comparte el secreto guardado del servidor.
 - Los archivos que existen solo en el servidor se listan, pero no tienen versión local para comparar.
+- La configuración exportada **no** incluye contraseñas ni passphrases: están cifradas para el equipo de
+  origen. Al importar un servidor nuevo hay que escribirlas otra vez.
+- Si la app se cierra o reinicia con una sesión de despliegue abierta, esa sesión se cierra sola al
+  arrancar; las subidas siguientes piden iniciar una nueva.
 - En el modo web, "local" significa **el disco del equipo que ejecuta el servicio**, no el del navegador.
   Para desplegar desde tu portátil, ejecuta el modo servidor en tu portátil o monta el proyecto en el
   host del servicio.

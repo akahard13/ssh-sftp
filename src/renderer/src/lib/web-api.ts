@@ -5,7 +5,13 @@ import type {
   CompareDefaults,
   CompareProgress,
   CompareResult,
+  ConfigImportResult,
   ConnectionStatus,
+  DeployHistoryBundle,
+  DeployImportResult,
+  DeploySession,
+  DeploySessionSummary,
+  DeployStartRequest,
   DownloadRequest,
   DownloadResult,
   FilePair,
@@ -15,6 +21,7 @@ import type {
   PathsRequest,
   PathsResult,
   RemoteDir,
+  ServerConfigBundle,
   ServerInput,
   ServerProfile,
   TerminalDataEvent,
@@ -59,6 +66,7 @@ function timeoutFor(method: string): number {
     return 10 * 60 * 1000
   }
   if (method === 'file:list-paths') return 10 * 60 * 1000
+  if (method === 'deploy:get' || method === 'deploy:export-history') return 10 * 60 * 1000
   return DEFAULT_TIMEOUT_MS
 }
 
@@ -319,6 +327,22 @@ export function createWebApi(): AppApi {
     },
     audit: {
       list: () => call<AuditEvent[]>('audit:list')
+    },
+    deploy: {
+      active: (serverId: string) => call<DeploySessionSummary | null>('deploy:active', serverId),
+      start: (request: DeployStartRequest) => call<DeploySessionSummary>('deploy:start', request),
+      end: (sessionId: string) => call<DeploySessionSummary>('deploy:end', sessionId),
+      list: () => call<DeploySessionSummary[]>('deploy:list'),
+      get: (sessionId: string) => httpRpc<DeploySession | null>('deploy:get', [sessionId]),
+      remove: (sessionId: string) => call<boolean>('deploy:delete', sessionId),
+      exportHistory: () => httpRpc<DeployHistoryBundle>('deploy:export-history', []),
+      importHistory: (json: string, replace: boolean) =>
+        httpRpc<DeployImportResult>('deploy:import-history', [json, replace])
+    },
+    config: {
+      exportServers: () => httpRpc<ServerConfigBundle>('config:export', []),
+      importServers: (json: string, replace: boolean) =>
+        httpRpc<ConfigImportResult>('config:import', [json, replace])
     },
     connection: {
       connect: (serverId: string) => call<boolean>('conn:connect', serverId),

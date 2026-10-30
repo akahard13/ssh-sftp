@@ -5,7 +5,13 @@ import type {
   CompareDefaults,
   CompareProgress,
   CompareResult,
+  ConfigImportResult,
   ConnectionStatus,
+  DeployHistoryBundle,
+  DeployImportResult,
+  DeploySession,
+  DeploySessionSummary,
+  DeployStartRequest,
   DownloadRequest,
   DownloadResult,
   FilePair,
@@ -15,6 +21,7 @@ import type {
   PathsRequest,
   PathsResult,
   RemoteDir,
+  ServerConfigBundle,
   ServerInput,
   ServerProfile,
   TerminalDataEvent,
@@ -39,6 +46,26 @@ export interface AppApi {
   }
   audit: {
     list(): Promise<AuditEvent[]>
+  }
+  /**
+   * Sesiones de despliegue: todo lo subido entre «Iniciar» y «Finalizar» queda
+   * registrado en un JSON por sesión. Sin una sesión activa no se puede subir.
+   */
+  deploy: {
+    active(serverId: string): Promise<DeploySessionSummary | null>
+    start(request: DeployStartRequest): Promise<DeploySessionSummary>
+    end(sessionId: string): Promise<DeploySessionSummary>
+    list(): Promise<DeploySessionSummary[]>
+    get(sessionId: string): Promise<DeploySession | null>
+    remove(sessionId: string): Promise<boolean>
+    /** Consolida todas las sesiones en un único JSON exportable. */
+    exportHistory(): Promise<DeployHistoryBundle>
+    importHistory(json: string, replace: boolean): Promise<DeployImportResult>
+  }
+  config: {
+    /** Configuración de los servidores registrados, sin secretos. */
+    exportServers(): Promise<ServerConfigBundle>
+    importServers(json: string, replace: boolean): Promise<ConfigImportResult>
   }
   connection: {
     connect(serverId: string): Promise<boolean>

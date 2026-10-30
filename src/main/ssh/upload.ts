@@ -26,12 +26,23 @@ export interface UploadTargetsOptions {
   onProgress?: (done: number, total: number) => void
 }
 
+export interface UploadOutcome {
+  relPath: string
+  remotePath: string
+  localPath: string
+  bytes: number
+  outcome: 'uploaded' | 'skipped' | 'error'
+  message?: string
+}
+
 export interface UploadTargetsResult {
   uploaded: number
   skipped: number
   bytes: number
   errors: UploadManyError[]
   backupRoot: string | null
+  /** Un registro por archivo, en el orden en que terminó cada uno. */
+  files: UploadOutcome[]
 }
 
 const DEFAULT_CONCURRENCY = 4
@@ -54,6 +65,7 @@ export async function uploadTargets(
   let skipped = 0
   let bytes = 0
   const errors: UploadManyError[] = []
+  const files: UploadOutcome[] = []
 
   const worker = async (): Promise<void> => {
     for (;;) {
@@ -72,6 +84,13 @@ export async function uploadTargets(
           const same = hashBuffer(await remoteReadFile(sftp, target.remotePath)) === hashBuffer(payload)
           if (same) {
             skipped += 1
+            files.push({
+              relPath: target.relPath,
+              remotePath: target.remotePath,
+              localPath: target.localPath,
+              bytes: 0,
+              outcome: 'skipped'
+            })
             continue
           }
         }
@@ -83,10 +102,23 @@ export async function uploadTargets(
         await atomicUpload(sftp, target.remotePath, payload, backupPath)
         uploaded += 1
         bytes += payload.length
-      } catch (err) {
-        errors.push({
+        files.push({
           relPath: target.relPath,
-          message: err instanceof Error ? err.message : 'Error desconocido.'
+          remotePath: target.remotePath,
+          localPath: target.localPath,
+          bytes: payload.length,
+          outcome: 'uploaded'
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error desconocido.'
+        errors.push({ relPath: target.relPath, message })
+        files.push({
+          relPath: target.relPath,
+          remotePath: target.remotePath,
+          localPath: target.localPath,
+          bytes: 0,
+          outcome: 'error',
+          message
         })
       } finally {
         done += 1
@@ -96,5 +128,5 @@ export async function uploadTargets(
   }
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()))
-  return { uploaded, skipped, bytes, errors, backupRoot: backupDir }
+  return { uploaded, skipped, bytes, errors, backupRoot: backupDir, files }
 }

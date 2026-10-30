@@ -8,6 +8,7 @@ import type {
 } from '../../shared/types'
 import { api } from './lib/api'
 import CompareView from './components/CompareView'
+import DataDialog from './components/DataDialog'
 import Modal from './components/Modal'
 import ServerDialog from './components/ServerDialog'
 import ServerSidebar from './components/ServerSidebar'
@@ -22,6 +23,7 @@ export default function App(): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('terminal')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [dataOpen, setDataOpen] = useState(false)
   const [editing, setEditing] = useState<ServerProfile | null>(null)
   const [hostKey, setHostKey] = useState<HostKeyPrompt | null>(null)
   const [challenge, setChallenge] = useState<AuthChallenge | null>(null)
@@ -120,7 +122,19 @@ export default function App(): JSX.Element {
           onDelete={(profile) => void remove(profile)}
           onConnect={(id) => void connect(id)}
           onDisconnect={(id) => void disconnect(id)}
-          footer={<UpdatePanel />}
+          footer={
+            <>
+              <button
+                type="button"
+                className="ghost small sidebar-data"
+                onClick={() => setDataOpen(true)}
+                title="Exportar o importar el historial de despliegues y la configuración de servidores"
+              >
+                Datos e historial
+              </button>
+              <UpdatePanel />
+            </>
+          }
         />
       ) : null}
 
@@ -235,6 +249,13 @@ export default function App(): JSX.Element {
             setDialogOpen(false)
             await refresh()
           }}
+        />
+      ) : null}
+
+      {dataOpen ? (
+        <DataDialog
+          onClose={() => setDataOpen(false)}
+          onServersChanged={() => void refresh()}
         />
       ) : null}
 
